@@ -1,0 +1,10 @@
+[package]
+name = "protogen"
+version = "0.1.0"
+authors = ["Micah Wylde <micah@micahw.com>"]
+
+[dependencies]
+
+[dependencies.nom]
+version = "^4.0"
+features = ["verbose-errors"]
