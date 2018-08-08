@@ -1,0 +1,66 @@
+hci_message = {
+  @type: u8;
+  public message = choose {
+    HciCommand = hci_command(@type) |
+    HciData = hci_data(@type)
+  };
+}
+
+hci_command ($type: u8 = 0x01) = {
+  @ocf: u8;
+  @length: u8;
+  @data: [u8; @length];
+  public command: apply @data choose {
+    Reset = reset(@ocf) |
+    SetEventFilter = set_event_filter(@ocf)
+  };
+}
+
+// reset command
+reset ($ocf = 0x0003) {
+}
+
+
+// set event filter command
+set_event_filter ($ocf = 0x0005) = {
+  @filter_type: u8;
+  public filter: choose {
+    ClearAllFilter = clear_all_filter(@filter_type) |
+    InquiryResult = inquiry_result(@filter_type) |
+    ConnectionSetup = connection_setup(@filter_type)
+  };
+}
+
+inquiry_result (@filter_type: u8 = 0x01) = {
+  public condition: filter_condition();
+}
+
+connection_setup (@filter_type: u8 = 0x02) = {
+  public condition: filter_condition();
+  public auto_accept: u8;
+}
+
+filter_condition = {
+  @condition_type: u8;
+  public value: choose {
+    AllDevices = all_devices(@condition_type) |
+    MatchClass = match_class(@condition_type) |
+    MatchAddress = match_address(@condition_type)
+  };
+}
+
+clear_all_filter($filter_type u8 = 0x00) {
+}
+
+
+all_devices ($condition_type u8 = 0x00) = {
+}
+
+match_class ($condition_type u8 = 0x01) = {
+  public class_of_device: [u8; 3];
+  public class_of_device_mask: [u8; 3];
+}
+
+match_address ($condition_type u8 = 0x02) = {
+  public address: [u8; 6];
+}
