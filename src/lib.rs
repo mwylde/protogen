@@ -15,11 +15,11 @@ mod tests {
 hci_command = {
   public @ocf: u8;
   length: u8;
-}!"#;
+}"#;
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -42,11 +42,11 @@ hci_command = {
 
     #[test]
     fn simple() {
-        let text = " hci_command =  { }!";
+        let text = " hci_command =  { }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![] })));
@@ -54,11 +54,11 @@ hci_command = {
 
     #[test]
     fn single_field() {
-        let text = " hci_command =  { public @ocf : u8; }!";
+        let text = " hci_command =  { public @ocf : u8; }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -75,11 +75,11 @@ hci_command = {
 
     #[test]
     fn message_args() {
-        let text = " hci_command ($type: u8, $name: String) = { }!";
+        let text = " hci_command ($type: u8, $name: String) = { }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![
                     Arg {
@@ -99,11 +99,11 @@ hci_command = {
 
     #[test]
     fn message_args_with_values() {
-        let text = " hci_command ($type: u8 = 0xFF, $name: String = \"hello world!\") = { }!";
+        let text = " hci_command ($type: u8 = 0xFF, $name: String = \"hello world!\") = { }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![
                     Arg {
@@ -123,11 +123,11 @@ hci_command = {
 
     #[test]
     fn field_hex_value() {
-        let text = " hci_command =  { public @ocf : u8 = 0x22; }!";
+        let text = " hci_command =  { public @ocf : u8 = 0x22; }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -144,11 +144,11 @@ hci_command = {
 
     #[test]
     fn field_string_value() {
-        let text = " hci_command =  { public @name : String = \"hello world!\" ; }!";
+        let text = " hci_command =  { public @name : String = \"hello world!\" ; }";
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -177,11 +177,11 @@ hci_command = {
   public @ocf: u8 = 0x2214;
   length: u32 = 55;
   @name: String = "this is a string.";
-}!"#;
+}"#;
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -218,11 +218,11 @@ hci_message ($name: u32) = {
     HciCommand = hci_command(@type) |
     HciData = hci_data(@type, $name)
   };
-}!"#;
+}"#;
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_message".to_string(),
                 args: vec![
                     Arg {
@@ -274,11 +274,11 @@ hci_command = {
   @type: [u8; 12];
   @length: u8;
   public @data: [u8; @length];
-}!"#;
+}"#;
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -321,11 +321,11 @@ hci_command = {
     Reset = reset(@ocf) |
     SetEventFilter = set_event_filter(@ocf)
   };
-}!"#;
+}"#;
 
         assert_eq!(
             message(text.as_bytes()),
-            Ok((&[33][..], Message {
+            Ok((&[][..], Message {
                 name: "hci_command".to_string(),
                 args: vec![],
                 fields: vec![
@@ -399,7 +399,7 @@ inquiry_result = {
         "#;
 
         assert_eq!(
-            source_file(text.as_bytes()),
+            source_file(text.trim().as_bytes()),
             Ok((&[][..], vec![
                 Message {
                     name: "hci_command".to_string(),
@@ -413,12 +413,20 @@ inquiry_result = {
                 },
             ])));
     }
-//
-//    #[test]
-//    fn test_file() {
-//        let source = include_bytes!("../examples/hci_message.pg");
-//        println!("{:?}", source_file(source));
-//    }
+
+    #[test]
+    fn test_file() {
+        let source = include_str!("../examples/hci_message.pg");
+        match source_file(source.trim().as_bytes()) {
+            Ok((rem, messages)) => {
+                assert_eq!(0, rem.len());
+                assert_eq!(11, messages.len());
+            }
+            Err(e) => {
+                debug_assert!(false, "got error: {:?}", e);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -430,10 +438,6 @@ pub enum Expression {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum DataType {
-    //    U8(Option<u8>),
-//    U16(Option<u16>),
-//    String(Option<String>),
-//    ByteArray(Option<Vec<u8>>),
     Value(String),
     Array {
         data_type: Box<DataType>,
@@ -654,12 +658,22 @@ named!(args<Vec<Arg>>,
         tag!(")")))
 );
 
+fn is_whitespace(b: u8) -> bool {
+    b == b' ' || b == b'\t' || b == b'\n' || b == b'\r'
+}
+
+named!(many_ws, take_while!(is_whitespace));
+
 named!(pub message<Message>,
-    ws!(do_parse!(
+    dbg_dmp!(do_parse!(
+      many_ws >>
       name: symbol >>
+      many_ws >>
       args: opt!(complete!(args)) >>
+      many_ws >>
       _eq: tag!("=") >>
-      fields: delimited!(tag!("{"), many0!(complete!(field)), tag!("}")) >>
+      many_ws >>
+      fields: delimited!(tag!("{"), ws!(many0!(complete!(field))), tag!("}")) >>
       (
         Message {
             name: name.trim().to_string(),
@@ -669,10 +683,10 @@ named!(pub message<Message>,
       ))));
 
 named!(pub source_file<Vec<Message>>,
-    ws!(many0!(complete!(message))));
-
-pub fn parse(data: &[u8]) -> Result<Vec<Message>, Nom::Error> {
-    // this is really hacky but seems like the easiest way to work around
-    // https://github.com/Geal/nom/issues/795 for now
-
-}
+    do_parse!(
+        many_ws >>
+        messages: separated_list!(complete!(many_ws), complete!(message)) >>
+        opt!(complete!(many_ws)) >>
+        (
+             messages
+        )));
