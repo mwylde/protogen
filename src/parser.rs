@@ -459,31 +459,31 @@ pub enum Value {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Field {
-    public: bool,
-    variable: bool,
-    name: String,
-    data_type: DataType,
-    value: Option<Value>,
+    pub public: bool,
+    pub variable: bool,
+    pub name: String,
+    pub data_type: DataType,
+    pub value: Option<Value>,
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct ChooseVariant {
-    name: String,
-    data_type: DataType
+    pub name: String,
+    pub data_type: DataType
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Arg {
-    name: String,
-    data_type: DataType,
-    value: Option<Value>,
+    pub name: String,
+    pub data_type: DataType,
+    pub value: Option<Value>,
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Message {
-    name: String,
-    args: Vec<Arg>,
-    fields: Vec<Field>,
+    pub name: String,
+    pub args: Vec<Arg>,
+    pub fields: Vec<Field>,
 }
 
 fn is_symbol_char(i: u8) -> bool {
