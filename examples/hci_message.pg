@@ -1,10 +1,12 @@
 hci_message = {
-  @type: u8;
+  @message_type: u8;
   public message: choose {
-    HciCommand = hci_command(@type) |
-    HciData = hci_data(@type)
+    HciCommand = hci_command(@message_type) |
+    HciData = hci_data(@message_type)
   };
 }
+
+hci_data = {}
 
 hci_command ($type: u8 = 0x01) = {
   @ocf: u8;
