@@ -186,9 +186,9 @@ hci_command = {
 
     #[test]
     fn test_number() {
-        assert_eq!(number(b"0x10;"), Ok((&[b';'][..], Value::Number(0x10))));
-        assert_eq!(number(b"0X5235;"), Ok((&[b';'][..], Value::Number(0x5235))));
-        assert_eq!(number(b"1241;"), Ok((&[b';'][..], Value::Number(1241))));
+        assert_eq!(number_value(b"0x10;"), Ok((&[b';'][..], Value::Number(0x10))));
+        assert_eq!(number_value(b"0X5235;"), Ok((&[b';'][..], Value::Number(0x5235))));
+        assert_eq!(number_value(b"1241;"), Ok((&[b';'][..], Value::Number(1241))));
     }
 
     #[test]
@@ -316,7 +316,7 @@ hci_command = {
                             name: "type".to_string(),
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Value(Value::Number(12)),
+                                length: Expression::Number(12),
                             },
                             value: None,
                         },
@@ -460,7 +460,7 @@ inquiry_result = {
         match source_file(source.trim().as_bytes()) {
             Ok((rem, messages)) => {
                 assert_eq!(0, rem.len());
-                assert_eq!(11, messages.len());
+                assert_eq!(12, messages.len());
             }
             Err(e) => {
                 debug_assert!(false, "got error: {:?}", e);
@@ -471,7 +471,7 @@ inquiry_result = {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Expression {
-    Value(Value),
+    Number(u64),
     Variable(String),
 }
 
@@ -576,12 +576,16 @@ named!(
     )
 );
 
-named!(
-    number<Value>,
-    map!(alt_complete!(hex_number | dec_number), Value::Number)
+named!(number<u64>,
+    alt_complete!(hex_number | dec_number)
 );
 
-named!(value<Value>, alt!(string | number));
+named!(
+    number_value<Value>,
+    map!(number, Value::Number)
+);
+
+named!(value<Value>, alt!(string | number_value));
 
 named!(
     variable<String>,
@@ -639,7 +643,7 @@ named!(
     expression<Expression>,
     ws!(alt!(
        complete!(variable) => {|v| Expression::Variable(v)} |
-       complete!(value)    => {|v| Expression::Value(v)}))
+       complete!(number)   => {|v| Expression::Number(v)}))
 );
 
 named!(

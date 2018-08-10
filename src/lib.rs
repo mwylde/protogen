@@ -4,5 +4,6 @@ extern crate nom;
 //#[macro_use]
 //extern crate quote;
 
-pub mod parser;
 pub mod generator;
+pub mod parser;
+mod test;

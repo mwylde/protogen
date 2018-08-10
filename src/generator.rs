@@ -1,6 +1,8 @@
 use parser::{DataType, Message};
 use std::collections::HashMap;
 use std::fmt;
+use parser::Expression;
+use parser::Value;
 
 #[cfg(test)]
 mod tests {
@@ -26,7 +28,7 @@ mod tests {
                 "",
                 &DataType::Array {
                     data_type: Box::new(DataType::Value("u8".to_string())),
-                    length: Expression::Value(Value::Number(8)),
+                    length: Expression::Number(8),
                 }
             )
         );
@@ -50,7 +52,7 @@ mod tests {
                     source: "data".to_string(),
                     data_type: Box::new(DataType::Array {
                         data_type: Box::new(DataType::Value("u8".to_string())),
-                        length: Expression::Value(Value::Number(8)),
+                        length: Expression::Number(8),
                     })
                 }
             )
@@ -61,9 +63,9 @@ mod tests {
             t(
                 "",
                 &DataType::Array {
-                    length: Expression::Value(Value::Number(8)),
+                    length: Expression::Number(8),
                     data_type: Box::new(DataType::Array {
-                        length: Expression::Value(Value::Number(8)),
+                        length: Expression::Number(8),
                         data_type: Box::new(DataType::Message {
                             name: "hci_command".to_string(),
                             args: vec![],
@@ -78,7 +80,7 @@ mod tests {
                 name: "HciCommand".to_string(),
                 data_type: DataType::Array {
                     data_type: Box::new(DataType::Value("u8".to_string())),
-                    length: Expression::Value(Value::Number(8)),
+                    length: Expression::Number(8),
                 },
             },
             ChooseVariant {
@@ -171,7 +173,7 @@ pub enum HciCommand_Message {
                             name: "SomeMessage".to_string(),
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Value(Value::Number(8)),
+                                length: Expression::Number(8),
                             },
                         }]),
                         value: None,
@@ -407,7 +409,7 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
-    messages: Vec<Message>,
+    messages: HashMap<String, Message>,
     structs: HashMap<String, Struct>,
     impls: Vec<Impl>,
     enums: HashMap<String, Enum>,
@@ -447,11 +449,87 @@ impl Generator {
         }
     }
 
+    fn parser_for_data_type(prefix: &str, data_type: &DataType) -> Result<String, String> {
+        Ok(match data_type {
+            DataType::Value(ref s) => {
+                match s.as_ref() {
+                    "u8"  => "le_u8".to_string(),
+                    "u16" => "le_u16".to_string(),
+                    "u32" => "le_u32".to_string(),
+                    "u64" => "le_u64".to_string(),
+                    "i8"  => "le_i8".to_string(),
+                    "i16" => "le_i16".to_string(),
+                    "i32" => "le_i32".to_string(),
+                    "i64" => "le_i64".to_string(),
+                    t => return Err(format!("Unknown type {} in {}", t, prefix)),
+                }
+            },
+            DataType::Message { ref name, .. } => {
+                format!("{}::parse", to_camel_case(name, true))
+            },
+            DataType::Choose(ref variants) => {
+                let vs: Vec<String> = variants.iter().map(|v| {
+                    format!("        {} => {{|v| {}::{}(v)}}",
+                            Generator::parser_for_data_type(
+                                &[prefix, &to_camel_case(&v.name, true)].join("_"),
+                                &v.data_type).unwrap(),
+                        prefix, v.name)
+                }).collect();
+
+                format!("alt!(\n{}\n)", vs.join(" |\n"))
+            },
+            DataType::Array { ref data_type, ref length } => {
+                let subparser = Generator::parser_for_data_type(prefix, data_type)?;
+
+                let l = match length {
+                    Expression::Number(n) => {
+                        format!("{}", n)
+                    },
+                    Expression::Variable(v) => {
+                        v[1..].to_string()
+                    }
+                };
+
+                format!("count!({}, {})", subparser, l)
+            }
+            _ => "unimplemented!()".to_string()
+        })
+    }
+
+    fn parse_fn(messages: &HashMap<String, Message>, message: &Message) -> Result<Function, String> {
+        let mut fun = Function {
+            name: "parse".to_string(),
+            public: true,
+            args: vec!["i: &[u8]".to_string()],
+            return_type: Some(format!("IResult<&[u8], {}>", to_camel_case(&message.name, true))),
+            body: vec![],
+        };
+
+        let message_type = to_camel_case(&message.name, true);
+
+        for f in &message.fields {
+            let prefix = [&message_type[..], &to_camel_case(&f.name, true)].join("_");
+
+            fun.body.push(format!("let (i, {}) = try_parse!(i, {});", f.name,
+                                  Generator::parser_for_data_type(&prefix, &f.data_type)?));
+        }
+
+        let construct_args: Vec<&str> = message.fields.iter().filter(|f| f.value.is_none())
+            .map(|f| &f.name[..]).collect();
+
+        fun.body.push(format!("Ok((i, {} {{ {} }}))", message_type, construct_args.join(",")));
+
+        Ok(fun)
+    }
+
     pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: Vec<Impl> = vec![];
-        for message in &messages {
+
+        let messages: HashMap<String, Message> = messages.into_iter().map(|m| (m.name.clone(), m)).collect();
+
+        for message in messages.values() {
             let mut s = Struct {
                 name: to_camel_case(&message.name, true),
                 fields: vec![],
@@ -488,6 +566,8 @@ impl Generator {
 
                 imp.functions.push(getter);
             }
+
+            imp.functions.push(Generator::parse_fn(&messages, message)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
