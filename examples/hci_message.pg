@@ -20,7 +20,7 @@ hci_command ($type: u8 = 0x01) = {
 
 reset ($ocf: u16 = 0x0003) = {}
 
-set_event_filter ($ocf: u16 = 0x0005) = {
+set_event_filter ($ocf: u16 = 0x0C05) = {
   @filter_type: u8;
   public filter: choose {
     ClearAllFilter = clear_all_filter(@filter_type) |

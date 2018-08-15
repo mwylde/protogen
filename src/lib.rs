@@ -6,4 +6,4 @@ extern crate nom;
 
 pub mod generator;
 pub mod parser;
-mod test;
+pub mod test;

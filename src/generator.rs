@@ -112,6 +112,7 @@ mod tests {
     }
 
     // #[test]
+    #[allow(dead_code)]
     fn test_render_struct() {
         let expected = r#"
 pub struct HciCommand {
@@ -207,6 +208,7 @@ pub enum HciCommand_Message {
         };
 
         let expected = r#"
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct HciCommand {
     length: u8,
     name: String,
@@ -232,6 +234,8 @@ pub struct HciCommand {
         };
 
         let expected = r#"
+#[allow(non_camel_case_types)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum SetEventFilter_Filter {
     ClearAllFilter(ClearAllFilter),
     InquiryResult(String),
@@ -298,6 +302,7 @@ struct Struct {
 
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]\n")?;
         write!(f, "pub struct {} {{\n", self.name)?;
 
         for field in &self.fields {
@@ -328,6 +333,8 @@ struct Enum {
 
 impl fmt::Display for Enum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "#[allow(non_camel_case_types)]\n")?;
+        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]\n")?;
         write!(f, "pub enum {} {{\n", self.name)?;
 
         for field in &self.variants {
@@ -400,7 +407,6 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
-    messages: HashMap<String, Message>,
     structs: HashMap<String, Struct>,
     impls: Vec<Impl>,
     enums: HashMap<String, Enum>,
@@ -513,11 +519,7 @@ impl Generator {
         }
     }
 
-    fn parser_for_value(prefix: &str, data_type: &DataType, value: &Value) -> Result<String, String> {
-        unimplemented!()
-    }
-
-    fn parse_fn(messages: &HashMap<String, Message>, message: &Message) -> Result<Function, String> {
+    fn parse_fn(message: &Message) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
@@ -548,7 +550,7 @@ impl Generator {
         let mut output_idx = 1;
         for f in &message.fields {
             let v = if let Some(ref target) = f.apply_to {
-                let (i, o, tf) = io.get(&target[1..]).ok_or(format!(
+                let (i, _, tf) = io.get(&target[1..]).ok_or(format!(
                     "Could not find stream {} for {} in {}", target, f.name, message.name))?;
 
                 if let DataType::Array { data_type, length } = &tf.data_type {
@@ -591,7 +593,7 @@ impl Generator {
             let (input, output, _) = io.get(&f.name[..])
                 .expect("missing i/o info for field");
 
-            if let Some(ref v) = &f.value {
+            if let Some(_) = &f.value {
                 unimplemented!("parser values have not been implemented yet");
             } else {
                 fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
@@ -661,7 +663,7 @@ impl Generator {
             }
 
 
-            imp.functions.push(Generator::parse_fn(&messages, message)?);
+            imp.functions.push(Generator::parse_fn( message)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
@@ -680,7 +682,6 @@ impl Generator {
         }
 
         Ok(Generator {
-            messages,
             structs,
             enums: enum_map,
             impls,
@@ -689,6 +690,7 @@ impl Generator {
 }
 impl fmt::Display for Generator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        //TODO: make ordering out of output consistent
         for s in self.structs.values() {
             write!(f, "{}\n\n", s)?;
         }
