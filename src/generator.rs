@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 use parser::Expression;
 use parser::Value;
+use parser::Field;
 
 #[cfg(test)]
 mod tests {
@@ -40,20 +41,6 @@ mod tests {
                 &DataType::Message {
                     name: "hci_command".to_string(),
                     args: vec![],
-                }
-            )
-        );
-
-        assert_eq!(
-            "Vec<u8>",
-            t(
-                "",
-                &DataType::Apply {
-                    source: "data".to_string(),
-                    data_type: Box::new(DataType::Array {
-                        data_type: Box::new(DataType::Value("u8".to_string())),
-                        length: Expression::Number(8),
-                    })
                 }
             )
         );
@@ -124,7 +111,7 @@ mod tests {
         assert_eq!(expected, enums);
     }
 
-    #[test]
+    // #[test]
     fn test_render_struct() {
         let expected = r#"
 pub struct HciCommand {
@@ -148,6 +135,7 @@ pub enum HciCommand_Message {
                         public: true,
                         variable: true,
                         name: "ocf".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
                     },
@@ -155,6 +143,7 @@ pub enum HciCommand_Message {
                         public: false,
                         variable: false,
                         name: "length".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
                     },
@@ -162,6 +151,7 @@ pub enum HciCommand_Message {
                         public: false,
                         variable: false,
                         name: "data".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: Some(Value::Number(10)),
                     },
@@ -169,6 +159,7 @@ pub enum HciCommand_Message {
                         public: false,
                         variable: false,
                         name: "message".to_string(),
+                        apply_to: None,
                         data_type: DataType::Choose(vec![ChooseVariant {
                             name: "SomeMessage".to_string(),
                             data_type: DataType::Array {
@@ -424,9 +415,6 @@ impl Generator {
                 Generator::render_data_type(prefix, enums, &*data_type)
             ),
             DataType::Message { ref name, .. } => to_camel_case(name, true),
-            DataType::Apply { ref data_type, .. } => {
-                Generator::render_data_type(prefix, enums, &*data_type)
-            }
             DataType::Choose(variants) => {
                 let e = Enum {
                     name: prefix.to_string(),
@@ -486,38 +474,92 @@ impl Generator {
                         format!("{}", n)
                     },
                     Expression::Variable(v) => {
-                        v[1..].to_string()
+                        format!("{} as usize", &v[1..])
                     }
                 };
 
                 format!("count!({}, {})", subparser, l)
             }
-            _ => "unimplemented!()".to_string()
         })
+    }
+
+    fn parser_for_value(prefix: &str, data_type: &DataType, value: &Value) -> Result<String, String> {
+        unimplemented!()
     }
 
     fn parse_fn(messages: &HashMap<String, Message>, message: &Message) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
-            args: vec!["i: &[u8]".to_string()],
+            args: vec!["_i0: &[u8]".to_string()],
             return_type: Some(format!("IResult<&[u8], {}>", to_camel_case(&message.name, true))),
             body: vec![],
         };
 
         let message_type = to_camel_case(&message.name, true);
 
+        let mut io: HashMap<&str, (String, String, &Field)> = HashMap::new();
+
+        let mut input_idx = 0;
+        let mut output_idx = 1;
+        for f in &message.fields {
+            let v = if let Some(ref target) = f.apply_to {
+                let (i, o, tf) = io.get(&target[1..]).ok_or(format!(
+                    "Could not find stream {} for {} in {}", target, f.name, message.name))?;
+
+                if let DataType::Array { data_type, length } = &tf.data_type {
+                    if let DataType::Value(ref v) = **data_type {
+                       if v == "u8" {
+                           let l = match length {
+                               Expression::Number(n) => n.to_string(),
+                               Expression::Variable(s) => s[1..].to_string(),
+                           };
+
+                           (format!("&{}[..{} as usize]", i, l), "_".to_string(), f)
+                       } else {
+                           return Err(format!("Stream source {} for {} in {} is not a byte array",
+                                              target, f.name, message.name));
+                       }
+                    } else {
+                        return Err(format!("Stream source {} for {} in {} is not a byte array",
+                                           target, f.name, message.name));
+                    }
+                } else {
+                    return Err(format!("Stream source {} for {} in {} is not a byte array",
+                                       target, f.name, message.name));
+                }
+            } else {
+                let v = (format!("_i{}", input_idx), format!("_i{}", output_idx), f);
+                input_idx += 1;
+                output_idx += 1;
+                v
+            };
+
+            if io.insert(&f.name[..], v).is_some() {
+                return Err(format!("duplicate field {} in {}", f.name, message.name));
+            }
+        };
+
+        let mut final_output = "_i0";
         for f in &message.fields {
             let prefix = [&message_type[..], &to_camel_case(&f.name, true)].join("_");
 
-            fun.body.push(format!("let (i, {}) = try_parse!(i, {});", f.name,
-                                  Generator::parser_for_data_type(&prefix, &f.data_type)?));
+            let (input, output, _) = io.get(&f.name[..])
+                .expect("missing i/o info for field");
+
+            fun.body.push(format!("let ({}, {}) = try_parse!({}, {});", output, f.name,
+                                  input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
+
+            if output != "_" {
+                final_output = output;
+            }
         }
 
         let construct_args: Vec<&str> = message.fields.iter().filter(|f| f.value.is_none())
             .map(|f| &f.name[..]).collect();
 
-        fun.body.push(format!("Ok((i, {} {{ {} }}))", message_type, construct_args.join(",")));
+        fun.body.push(format!("Ok(({}, {} {{ {} }}))", final_output, message_type,
+                              construct_args.join(", ")));
 
         Ok(fun)
     }

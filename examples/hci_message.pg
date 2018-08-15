@@ -9,7 +9,7 @@ hci_message = {
 hci_data = {}
 
 hci_command ($type: u8 = 0x01) = {
-  @ocf: u8;
+  @ocf: u16;
   @length: u8;
   @data: [u8; @length];
   public command: apply @data choose {

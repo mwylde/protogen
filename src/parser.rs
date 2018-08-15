@@ -26,6 +26,7 @@ hci_command = {
                             public: true,
                             variable: true,
                             name: "ocf".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                         },
@@ -33,6 +34,7 @@ hci_command = {
                             public: false,
                             variable: false,
                             name: "length".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                         },
@@ -74,6 +76,7 @@ hci_command = {
                         public: true,
                         variable: true,
                         name: "ocf".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
                     }],
@@ -153,6 +156,7 @@ hci_command = {
                         public: true,
                         variable: true,
                         name: "ocf".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: Some(Value::Number(0x22u64)),
                     }],
@@ -176,6 +180,7 @@ hci_command = {
                         public: true,
                         variable: true,
                         name: "name".to_string(),
+                        apply_to: None,
                         data_type: DataType::Value("String".to_string()),
                         value: Some(Value::String("hello world!".to_string())),
                     }],
@@ -212,6 +217,7 @@ hci_command = {
                             public: true,
                             variable: true,
                             name: "ocf".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: Some(Value::Number(0x2214)),
                         },
@@ -219,6 +225,7 @@ hci_command = {
                             public: false,
                             variable: false,
                             name: "length".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u32".to_string()),
                             value: Some(Value::Number(55)),
                         },
@@ -226,6 +233,7 @@ hci_command = {
                             public: false,
                             variable: true,
                             name: "name".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("String".to_string()),
                             value: Some(Value::String("this is a string.".to_string())),
                         },
@@ -262,6 +270,7 @@ hci_message ($name: u32) = {
                             public: false,
                             variable: true,
                             name: "type".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                         },
@@ -269,6 +278,7 @@ hci_message ($name: u32) = {
                             public: true,
                             variable: false,
                             name: "message".to_string(),
+                            apply_to: None,
                             data_type: DataType::Choose(vec![
                                 ChooseVariant {
                                     name: "HciCommand".to_string(),
@@ -314,6 +324,7 @@ hci_command = {
                             public: false,
                             variable: true,
                             name: "type".to_string(),
+                            apply_to: None,
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
                                 length: Expression::Number(12),
@@ -324,6 +335,7 @@ hci_command = {
                             public: false,
                             variable: true,
                             name: "length".to_string(),
+                            apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                         },
@@ -331,6 +343,7 @@ hci_command = {
                             public: true,
                             variable: true,
                             name: "data".to_string(),
+                            apply_to: None,
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
                                 length: Expression::Variable("@length".to_string()),
@@ -364,25 +377,23 @@ hci_command = {
                         public: true,
                         variable: false,
                         name: "command".to_string(),
-                        data_type: DataType::Apply {
-                            source: "@data".to_string(),
-                            data_type: Box::new(DataType::Choose(vec![
-                                ChooseVariant {
-                                    name: "Reset".to_string(),
-                                    data_type: DataType::Message {
-                                        name: "reset".to_string(),
-                                        args: vec!["@ocf".to_string()],
-                                    },
+                        apply_to: Some("@data".to_string()),
+                        data_type: DataType::Choose(vec![
+                            ChooseVariant {
+                                name: "Reset".to_string(),
+                                data_type: DataType::Message {
+                                    name: "reset".to_string(),
+                                    args: vec!["@ocf".to_string()],
                                 },
-                                ChooseVariant {
-                                    name: "SetEventFilter".to_string(),
-                                    data_type: DataType::Message {
-                                        name: "set_event_filter".to_string(),
-                                        args: vec!["@ocf".to_string()],
-                                    },
+                            },
+                            ChooseVariant {
+                                name: "SetEventFilter".to_string(),
+                                data_type: DataType::Message {
+                                    name: "set_event_filter".to_string(),
+                                    args: vec!["@ocf".to_string()],
                                 },
-                            ])),
-                        },
+                            },
+                        ]),
                         value: None,
                     }],
                 }
@@ -408,6 +419,7 @@ inquiry_result = {
                         public: true,
                         variable: false,
                         name: "condition".to_string(),
+                        apply_to: None,
                         data_type: DataType::Message {
                             name: "filter_condition".to_string(),
                             args: vec![],
@@ -486,11 +498,7 @@ pub enum DataType {
         name: String,
         args: Vec<String>,
     },
-    Choose(Vec<ChooseVariant>),
-    Apply {
-        source: String,
-        data_type: Box<DataType>,
-    },
+    Choose(Vec<ChooseVariant>)
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -504,6 +512,7 @@ pub struct Field {
     pub public: bool,
     pub variable: bool,
     pub name: String,
+    pub apply_to: Option<String>,
     pub data_type: DataType,
     pub value: Option<Value>,
 }
@@ -540,6 +549,7 @@ named!(
     symbol<&str>,
     map_res!(take_while1!(is_symbol_char), str::from_utf8)
 );
+
 
 named!(pub string<Value>,
     map!(delimited!(tag!("\""),
@@ -629,15 +639,12 @@ named!(
     ))
 );
 
-named!(
-    apply_type<DataType>,
+named!(apply<String>,
     ws!(do_parse!(
-        _apply: tag!("apply") >> source: variable >> data_type: data_type >> (DataType::Apply {
-            source,
-            data_type: Box::new(data_type),
-        })
-    ))
-);
+        tag!("apply") >>
+        source: variable >>
+         ( source )
+    )));
 
 named!(
     expression<Expression>,
@@ -665,7 +672,6 @@ named!(
     ws!(alt!(
         complete!(array_type)
             | complete!(choose_type)
-            | complete!(apply_type)
             | complete!(message_type)
             | map!(complete!(symbol), |s| DataType::Value(s.to_string()))
     ))
@@ -683,12 +689,14 @@ named!(
             >> variable: opt!(tag!("@"))
             >> name: symbol
             >> _colon: tag!(":")
+            >> apply_to: opt!(complete!(apply))
             >> data_type: data_type
             >> value: opt!(assign_value)
             >> _semicolon: tag!(";") >> (Field {
             public: public.is_some(),
             variable: variable.is_some(),
             name: name.trim().to_string(),
+            apply_to,
             data_type,
             value,
         })
