@@ -1,4 +1,4 @@
-use nom::{IResult, le_u8, le_u16};
+use nom::*;
 use nom;
 
 #[cfg(test)]

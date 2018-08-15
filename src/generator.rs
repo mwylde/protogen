@@ -4,6 +4,7 @@ use std::fmt;
 use parser::Expression;
 use parser::Value;
 use parser::Field;
+use std::collections::HashSet;
 
 #[cfg(test)]
 mod tests {
@@ -255,14 +256,6 @@ pub enum SetEventFilter_Filter {
 
 }
 
-//pub fn generate(message: Message) {
-//    let tokens = quote! {
-//         struct #message_name {
-//
-//         }
-//    };
-//}
-
 pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
     let mut result = String::new();
 
@@ -407,6 +400,7 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
+    imports: HashSet<String>,
     structs: HashMap<String, Struct>,
     impls: Vec<Impl>,
     enums: HashMap<String, Enum>,
@@ -618,6 +612,8 @@ impl Generator {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: Vec<Impl> = vec![];
+        let imports: HashSet<String> = ["nom".to_string(), "nom::*".to_string()]
+            .iter().cloned().collect();
 
         let messages: HashMap<String, Message> = messages.into_iter().map(|m| (m.name.clone(), m)).collect();
 
@@ -682,6 +678,7 @@ impl Generator {
         }
 
         Ok(Generator {
+            imports,
             structs,
             enums: enum_map,
             impls,
@@ -690,6 +687,10 @@ impl Generator {
 }
 impl fmt::Display for Generator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for import in &self.imports {
+            write!(f, "use {};\n", import)?;
+        }
+
         //TODO: make ordering out of output consistent
         for s in self.structs.values() {
             write!(f, "{}\n\n", s)?;
