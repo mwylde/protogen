@@ -591,8 +591,12 @@ impl Generator {
             let (input, output, _) = io.get(&f.name[..])
                 .expect("missing i/o info for field");
 
-            fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
-                                  input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
+            if let Some(ref v) = &f.value {
+                unimplemented!("parser values have not been implemented yet");
+            } else {
+                fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
+                                      input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
+            }
 
             if output != "_" {
                 final_output = output;
@@ -635,6 +639,7 @@ impl Generator {
                     name: format!("get_{}", f.name),
                     public: true,
                     args: vec![],
+                    // TODO: if this is a copy type, don't use a reference
                     return_type: Some(format!("&{}", data_type)),
                     body: vec![],
                 };
@@ -673,8 +678,6 @@ impl Generator {
             }
             enum_map.insert(e.name.clone(), e);
         }
-
-        // TODO: validate that all referenced message types exist
 
         Ok(Generator {
             messages,
