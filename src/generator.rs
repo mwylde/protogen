@@ -400,10 +400,11 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
+    messages: Vec<Message>,
     imports: HashSet<String>,
     structs: HashMap<String, Struct>,
-    impls: Vec<Impl>,
-    enums: HashMap<String, Enum>,
+    impls: HashMap<String, Vec<Impl>>,
+    enums: Vec<Enum>,
 }
 
 impl Generator {
@@ -611,13 +612,11 @@ impl Generator {
     pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
-        let mut impls: Vec<Impl> = vec![];
+        let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
         let imports: HashSet<String> = ["nom".to_string(), "nom::*".to_string()]
             .iter().cloned().collect();
 
-        let messages: HashMap<String, Message> = messages.into_iter().map(|m| (m.name.clone(), m)).collect();
-
-        for message in messages.values() {
+        for message in &messages {
             let mut s = Struct {
                 name: to_camel_case(&message.name, true),
                 fields: vec![],
@@ -665,43 +664,63 @@ impl Generator {
                 return Err(format!("duplicate struct type {}", s.name));
             }
 
+            impls.entry(s.name.clone()).or_insert_with(|| vec![])
+                .push(imp);
             structs.insert(s.name.clone(), s);
-            impls.push(imp);
         }
 
-        let mut enum_map = HashMap::new();
-        for e in enums {
-            if enum_map.contains_key(&e.name) {
-                return Err(format!("duplicate enum type {}", e.name));
+        // check for duplicate enums
+        {
+            let mut enum_map = HashMap::new();
+            for e in &enums {
+                if enum_map.contains_key(&e.name) {
+                    return Err(format!("duplicate enum type {}", e.name));
+                }
+                enum_map.insert(e.name.clone(), e);
             }
-            enum_map.insert(e.name.clone(), e);
         }
 
         Ok(Generator {
+            messages,
             imports,
             structs,
-            enums: enum_map,
+            enums,
             impls,
         })
     }
 }
+
 impl fmt::Display for Generator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for import in &self.imports {
             write!(f, "use {};\n", import)?;
         }
 
-        //TODO: make ordering out of output consistent
-        for s in self.structs.values() {
-            write!(f, "{}\n\n", s)?;
+        write!(f, "\n")?;
+
+        for message in &self.messages {
+            let name = to_camel_case(&message.name, true);
+            // write the struct definition
+            write!(f, "{}\n\n", self.structs.get(&name).expect("missing struct"))?;
+
+            // write any associated impls
+            for imp in self.impls.get(&name).unwrap_or(&vec![]) {
+                write!(f, "{}\n\n", imp)?;
+            }
+
+            write!(f, "\n")?;
         }
 
-        for imp in &self.impls {
-            write!(f, "{}\n\n", imp)?;
-        }
-
-        for e in self.enums.values() {
+        for e in &self.enums {
+            // write the enum definition
             write!(f, "{}\n\n", e)?;
+
+            // write any associated impls
+            for imp in self.impls.get(&e.name).unwrap_or(&vec![]) {
+                write!(f, "{}\n\n", imp)?;
+            }
+
+            write!(f, "\n")?;
         }
 
         Ok(())

@@ -1,6 +1,3 @@
-use nom::*;
-use nom;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -13,68 +10,13 @@ mod tests {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct FilterCondition {
-    _condition_type: u8,
-    _value: FilterCondition_Value,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct MatchAddress {
-    _address: Vec<u8>,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Reset {
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct HciCommand {
-    _ocf: u16,
-    _length: u8,
-    _data: Vec<u8>,
-    _command: HciCommand_Command,
-}
+use nom::*;
+use nom;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct HciMessage {
     _message_type: u8,
     _message: HciMessage_Message,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct ConnectionSetup {
-    _condition: FilterCondition,
-    _auto_accept: u8,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct HciData {
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct MatchClass {
-    _class_of_device: Vec<u8>,
-    _class_of_device_mask: Vec<u8>,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct ClearAllFilter {
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct InquiryResult {
-    _condition: FilterCondition,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct SetEventFilter {
-    _filter_type: u8,
-    _filter: SetEventFilter_Filter,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct AllDevices {
 }
 
 impl HciMessage {
@@ -93,61 +35,28 @@ impl HciMessage {
 
 }
 
-impl FilterCondition {
-    pub fn get_value(&self) -> &FilterCondition_Value {
-        &self._value
-    }
 
-    pub fn parse(_i0: &[u8]) -> IResult<&[u8], FilterCondition> {
-        let (_i1, _condition_type) = try_parse!(_i0, le_u8);
-        let (_i2, _value) = try_parse!(_i1, alt!(
-            call!(AllDevices::parse, _condition_type) => {|v| FilterCondition_Value::AllDevices(v)} |
-            call!(MatchClass::parse, _condition_type) => {|v| FilterCondition_Value::MatchClass(v)} |
-            call!(MatchAddress::parse, _condition_type) => {|v| FilterCondition_Value::MatchAddress(v)}
-    ));
-        Ok((_i2, FilterCondition { _condition_type, _value }))
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct HciData {
+}
+
+impl HciData {
+    pub fn parse(_i0: &[u8], _type: u8) -> IResult<&[u8], HciData> {
+        if _type != 0x0 {
+            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+        }
+        Ok((_i0, HciData {  }))
     }
 
 }
 
-impl ConnectionSetup {
-    pub fn get_condition(&self) -> &FilterCondition {
-        &self._condition
-    }
 
-    pub fn get_auto_accept(&self) -> &u8 {
-        &self._auto_accept
-    }
-
-    pub fn parse(_i0: &[u8], _filter_type: u8) -> IResult<&[u8], ConnectionSetup> {
-        if _filter_type != 0x2 {
-            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
-        }
-        let (_i1, _condition) = try_parse!(_i0, FilterCondition::parse);
-        let (_i2, _auto_accept) = try_parse!(_i1, le_u8);
-        Ok((_i2, ConnectionSetup { _condition, _auto_accept }))
-    }
-
-}
-
-impl MatchClass {
-    pub fn get_class_of_device(&self) -> &Vec<u8> {
-        &self._class_of_device
-    }
-
-    pub fn get_class_of_device_mask(&self) -> &Vec<u8> {
-        &self._class_of_device_mask
-    }
-
-    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], MatchClass> {
-        if _condition_type != 0x1 {
-            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
-        }
-        let (_i1, _class_of_device) = try_parse!(_i0, count!(le_u8, 3));
-        let (_i2, _class_of_device_mask) = try_parse!(_i1, count!(le_u8, 3));
-        Ok((_i2, MatchClass { _class_of_device, _class_of_device_mask }))
-    }
-
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct HciCommand {
+    _ocf: u16,
+    _length: u8,
+    _data: Vec<u8>,
+    _command: HciCommand_Command,
 }
 
 impl HciCommand {
@@ -171,19 +80,26 @@ impl HciCommand {
 
 }
 
-impl MatchAddress {
-    pub fn get_address(&self) -> &Vec<u8> {
-        &self._address
-    }
 
-    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], MatchAddress> {
-        if _condition_type != 0x2 {
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Reset {
+}
+
+impl Reset {
+    pub fn parse(_i0: &[u8], _ocf: u16) -> IResult<&[u8], Reset> {
+        if _ocf != 0x3 {
             return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
         }
-        let (_i1, _address) = try_parse!(_i0, count!(le_u8, 6));
-        Ok((_i1, MatchAddress { _address }))
+        Ok((_i0, Reset {  }))
     }
 
+}
+
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct SetEventFilter {
+    _filter_type: u8,
+    _filter: SetEventFilter_Filter,
 }
 
 impl SetEventFilter {
@@ -206,24 +122,10 @@ impl SetEventFilter {
 
 }
 
-impl AllDevices {
-    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], AllDevices> {
-        if _condition_type != 0x0 {
-            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
-        }
-        Ok((_i0, AllDevices {  }))
-    }
 
-}
-
-impl HciData {
-    pub fn parse(_i0: &[u8], _type: u8) -> IResult<&[u8], HciData> {
-        if _type != 0x0 {
-            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
-        }
-        Ok((_i0, HciData {  }))
-    }
-
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct InquiryResult {
+    _condition: FilterCondition,
 }
 
 impl InquiryResult {
@@ -241,6 +143,62 @@ impl InquiryResult {
 
 }
 
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct ConnectionSetup {
+    _condition: FilterCondition,
+    _auto_accept: u8,
+}
+
+impl ConnectionSetup {
+    pub fn get_condition(&self) -> &FilterCondition {
+        &self._condition
+    }
+
+    pub fn get_auto_accept(&self) -> &u8 {
+        &self._auto_accept
+    }
+
+    pub fn parse(_i0: &[u8], _filter_type: u8) -> IResult<&[u8], ConnectionSetup> {
+        if _filter_type != 0x2 {
+            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+        }
+        let (_i1, _condition) = try_parse!(_i0, FilterCondition::parse);
+        let (_i2, _auto_accept) = try_parse!(_i1, le_u8);
+        Ok((_i2, ConnectionSetup { _condition, _auto_accept }))
+    }
+
+}
+
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct FilterCondition {
+    _condition_type: u8,
+    _value: FilterCondition_Value,
+}
+
+impl FilterCondition {
+    pub fn get_value(&self) -> &FilterCondition_Value {
+        &self._value
+    }
+
+    pub fn parse(_i0: &[u8]) -> IResult<&[u8], FilterCondition> {
+        let (_i1, _condition_type) = try_parse!(_i0, le_u8);
+        let (_i2, _value) = try_parse!(_i1, alt!(
+            call!(AllDevices::parse, _condition_type) => {|v| FilterCondition_Value::AllDevices(v)} |
+            call!(MatchClass::parse, _condition_type) => {|v| FilterCondition_Value::MatchClass(v)} |
+            call!(MatchAddress::parse, _condition_type) => {|v| FilterCondition_Value::MatchAddress(v)}
+    ));
+        Ok((_i2, FilterCondition { _condition_type, _value }))
+    }
+
+}
+
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct ClearAllFilter {
+}
+
 impl ClearAllFilter {
     pub fn parse(_i0: &[u8], _filter_type: u8) -> IResult<&[u8], ClearAllFilter> {
         if _filter_type != 0x0 {
@@ -251,15 +209,85 @@ impl ClearAllFilter {
 
 }
 
-impl Reset {
-    pub fn parse(_i0: &[u8], _ocf: u16) -> IResult<&[u8], Reset> {
-        if _ocf != 0x3 {
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct AllDevices {
+}
+
+impl AllDevices {
+    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], AllDevices> {
+        if _condition_type != 0x0 {
             return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
         }
-        Ok((_i0, Reset {  }))
+        Ok((_i0, AllDevices {  }))
     }
 
 }
+
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct MatchClass {
+    _class_of_device: Vec<u8>,
+    _class_of_device_mask: Vec<u8>,
+}
+
+impl MatchClass {
+    pub fn get_class_of_device(&self) -> &Vec<u8> {
+        &self._class_of_device
+    }
+
+    pub fn get_class_of_device_mask(&self) -> &Vec<u8> {
+        &self._class_of_device_mask
+    }
+
+    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], MatchClass> {
+        if _condition_type != 0x1 {
+            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+        }
+        let (_i1, _class_of_device) = try_parse!(_i0, count!(le_u8, 3));
+        let (_i2, _class_of_device_mask) = try_parse!(_i1, count!(le_u8, 3));
+        Ok((_i2, MatchClass { _class_of_device, _class_of_device_mask }))
+    }
+
+}
+
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct MatchAddress {
+    _address: Vec<u8>,
+}
+
+impl MatchAddress {
+    pub fn get_address(&self) -> &Vec<u8> {
+        &self._address
+    }
+
+    pub fn parse(_i0: &[u8], _condition_type: u8) -> IResult<&[u8], MatchAddress> {
+        if _condition_type != 0x2 {
+            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+        }
+        let (_i1, _address) = try_parse!(_i0, count!(le_u8, 6));
+        Ok((_i1, MatchAddress { _address }))
+    }
+
+}
+
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub enum HciMessage_Message {
+    HciCommand(HciCommand),
+    HciData(HciData),
+}
+
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub enum HciCommand_Command {
+    Reset(Reset),
+    SetEventFilter(SetEventFilter),
+}
+
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -269,24 +297,11 @@ pub enum SetEventFilter_Filter {
     ConnectionSetup(ConnectionSetup),
 }
 
+
 #[allow(non_camel_case_types)]
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum FilterCondition_Value {
     AllDevices(AllDevices),
     MatchClass(MatchClass),
     MatchAddress(MatchAddress),
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub enum HciMessage_Message {
-    HciCommand(HciCommand),
-    HciData(HciData),
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub enum HciCommand_Command {
-    Reset(Reset),
-    SetEventFilter(SetEventFilter),
 }
