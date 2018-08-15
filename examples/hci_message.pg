@@ -6,7 +6,7 @@ hci_message = {
   };
 }
 
-hci_data = {}
+hci_data ($type: u8 = 0x00) = {}
 
 hci_command ($type: u8 = 0x01) = {
   @ocf: u16;

@@ -284,14 +284,16 @@ hci_message ($name: u32) = {
                                     name: "HciCommand".to_string(),
                                     data_type: DataType::Message {
                                         name: "hci_command".to_string(),
-                                        args: vec!["@type".to_string()],
+                                        args: vec![Expression::Variable("@type".to_string())],
                                     },
                                 },
                                 ChooseVariant {
                                     name: "HciData".to_string(),
                                     data_type: DataType::Message {
                                         name: "hci_data".to_string(),
-                                        args: vec!["@type".to_string(), "$name".to_string()],
+                                        args: vec![
+                                            Expression::Variable("@type".to_string()),
+                                            Expression::Variable("$name".to_string())],
                                     },
                                 },
                             ]),
@@ -383,14 +385,14 @@ hci_command = {
                                 name: "Reset".to_string(),
                                 data_type: DataType::Message {
                                     name: "reset".to_string(),
-                                    args: vec!["@ocf".to_string()],
+                                    args: vec![Expression::Variable("@ocf".to_string())],
                                 },
                             },
                             ChooseVariant {
                                 name: "SetEventFilter".to_string(),
                                 data_type: DataType::Message {
                                     name: "set_event_filter".to_string(),
-                                    args: vec!["@ocf".to_string()],
+                                    args: vec![Expression::Variable("@ocf".to_string())],
                                 },
                             },
                         ]),
@@ -496,7 +498,7 @@ pub enum DataType {
     },
     Message {
         name: String,
-        args: Vec<String>,
+        args: Vec<Expression>,
     },
     Choose(Vec<ChooseVariant>)
 }
@@ -609,7 +611,7 @@ named!(
 named!(
     message_type<DataType>,
     ws!(do_parse!(
-        name: symbol >> args: delimited!(tag!("("), separated_list!(tag!(","), variable), tag!(")"))
+        name: symbol >> args: delimited!(tag!("("), separated_list!(tag!(","), expression), tag!(")"))
             >> (DataType::Message {
                 name: name.to_string(),
                 args,

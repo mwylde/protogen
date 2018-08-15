@@ -452,8 +452,19 @@ impl Generator {
                     t => return Err(format!("Unknown type {} in {}", t, prefix)),
                 }
             },
-            DataType::Message { ref name, .. } => {
-                format!("{}::parse", to_camel_case(name, true))
+            DataType::Message { ref name, ref args } => {
+                let fun = to_camel_case(name, true);
+                if args.is_empty() {
+                    format!("{}::parse", fun)
+                } else {
+                    let args: Vec<String> = args.iter().map(|arg| {
+                        match arg {
+                            Expression::Variable(v) => format!("_{}", &v[1..]),
+                            Expression::Number(n) => format!("{:X}", n),
+                        }
+                    }).collect();
+                    format!("call!({}::parse, {})", fun, args.join(", "))
+                }
             },
             DataType::Choose(ref variants) => {
                 let vs: Vec<String> = variants.iter().map(|v| {
@@ -474,13 +485,32 @@ impl Generator {
                         format!("{}", n)
                     },
                     Expression::Variable(v) => {
-                        format!("{} as usize", &v[1..])
+                        format!("_{} as usize", &v[1..])
                     }
                 };
 
                 format!("count!({}, {})", subparser, l)
             }
         })
+    }
+
+    fn arg_type(data_type: &DataType) -> Result<String, String> {
+        Ok(match data_type {
+            DataType::Value(ref v) => v.clone(),
+            DataType::Array { data_type, ..} => {
+                format!("Vec<{}>", Generator::arg_type(&*data_type)?)
+            }
+            _ => {
+                return Err(format!("Data type {:?} is not supported as an argument", data_type))
+            }
+        })
+    }
+
+    fn render_value(value: &Value) -> String {
+        match value {
+            Value::String(s) => format!(r#""{}""#, s),
+            Value::Number(n) => format!("0x{:X}", n),
+        }
     }
 
     fn parser_for_value(prefix: &str, data_type: &DataType, value: &Value) -> Result<String, String> {
@@ -495,6 +525,20 @@ impl Generator {
             return_type: Some(format!("IResult<&[u8], {}>", to_camel_case(&message.name, true))),
             body: vec![],
         };
+
+        // add arguments to the function
+        for arg in &message.args {
+            fun.args.push(format!("_{}: {}", arg.name, Generator::arg_type(&arg.data_type)?));
+
+            // if the argument has a value, we also need to add predicates at the beginning to check
+            // the value matches
+            if let Some(v) = &arg.value {
+                fun.body.push(
+                    format!("if _{} != {} {{
+        return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));\n    }}",
+                      arg.name, Generator::render_value(v)));
+            }
+        }
 
         let message_type = to_camel_case(&message.name, true);
 
@@ -512,7 +556,7 @@ impl Generator {
                        if v == "u8" {
                            let l = match length {
                                Expression::Number(n) => n.to_string(),
-                               Expression::Variable(s) => s[1..].to_string(),
+                               Expression::Variable(s) => format!("_{}", &s[1..]),
                            };
 
                            (format!("&{}[..{} as usize]", i, l), "_".to_string(), f)
@@ -547,7 +591,7 @@ impl Generator {
             let (input, output, _) = io.get(&f.name[..])
                 .expect("missing i/o info for field");
 
-            fun.body.push(format!("let ({}, {}) = try_parse!({}, {});", output, f.name,
+            fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
                                   input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
 
             if output != "_" {
@@ -555,8 +599,8 @@ impl Generator {
             }
         }
 
-        let construct_args: Vec<&str> = message.fields.iter().filter(|f| f.value.is_none())
-            .map(|f| &f.name[..]).collect();
+        let construct_args: Vec<String> = message.fields.iter().filter(|f| f.value.is_none())
+            .map(|f| format!("_{}", f.name)).collect();
 
         fun.body.push(format!("Ok(({}, {} {{ {} }}))", final_output, message_type,
                               construct_args.join(", ")));
@@ -588,8 +632,8 @@ impl Generator {
                 let data_type = Generator::render_data_type(prefix, &mut enums, &f.data_type);
 
                 let mut getter = Function {
-                    name: f.name.clone(),
-                    public: f.public,
+                    name: format!("get_{}", f.name),
+                    public: true,
                     args: vec![],
                     return_type: Some(format!("&{}", data_type)),
                     body: vec![],
@@ -599,15 +643,18 @@ impl Generator {
                     getter.body.push(format!("&{:?}", v));
                 } else {
                     s.fields.push(StructField {
-                        name: f.name.clone(),
+                        name: format!("_{}", f.name),
                         data_type,
                     });
                     getter.args.push("&self".to_string());
-                    getter.body.push(format!("&self.{}", f.name));
+                    getter.body.push(format!("&self._{}", f.name));
                 }
 
-                imp.functions.push(getter);
+                if f.public {
+                    imp.functions.push(getter);
+                }
             }
+
 
             imp.functions.push(Generator::parse_fn(&messages, message)?);
 
