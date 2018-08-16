@@ -410,7 +410,8 @@ pub struct Generator {
 impl Generator {
     fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
-            DataType::Value(ref s) => s.clone(),
+            DataType::Value(v) if *v == "cstring" => "String".to_string(),
+            DataType::Value(v)  => v.clone(),
             DataType::Array { ref data_type, .. } => format!(
                 "Vec<{}>",
                 Generator::render_data_type(prefix, enums, &*data_type)
@@ -450,6 +451,7 @@ impl Generator {
                     "i16" => "le_i16".to_string(),
                     "i32" => "le_i32".to_string(),
                     "i64" => "le_i64".to_string(),
+                    "cstring" => "map_res!(take_until!(\"\\0\"), |v: &[u8]| String::from_utf8(v.to_owned()))".to_string(),
                     t => return Err(format!("Unknown type {} in {}", t, prefix)),
                 }
             },

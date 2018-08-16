@@ -7,6 +7,9 @@ build = "build.rs"
 workspace = ".."
 publish = false
 
+[dependencies]
+hex = "^0.3.2"
+
 [dependencies.nom]
 version = "^4.0"
 features = ["verbose-errors"]

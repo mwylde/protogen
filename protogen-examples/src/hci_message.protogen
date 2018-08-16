@@ -2,12 +2,38 @@ hci_message = {
   @message_type: u8;
   public message: choose {
     HciCommand = hci_command(@message_type) |
-    HciData = hci_data(@message_type)
+    HciEvent = hci_event(@message_type)
   };
 }
 
+////////////////////////////
+///       HCI EVENTS     ///
+////////////////////////////
+hci_event ($type: u8 = 0x04) = {
+  @event_code: u8;
+  @parameter_length: u8;
+  @data: [u8; @parameter_length];
+  public event: apply @data choose {
+    CommandComplete = command_complete(@event_code)
+  };
+}
 
-hci_data ($type: u8 = 0x00) = {}
+command_complete ($event_code: u8 = 0x0E) = {
+  @num_packets: u8;
+  @ocf: u16;
+  public @response: choose {
+    Reset = reset_response(@ocf) |
+    SetEventFilter = set_event_filter_response(@ocf) |
+    Flush = flush_response(@ocf) |
+    WriteLocalName = write_local_name_response(@ocf) |
+    ReadLocalName = read_local_name_response(@ocf)
+
+  };
+}
+
+response_status = {
+  public status_code: u8;
+}
 
 ////////////////////////////
 ///     HCI COMMANDS     ///
@@ -19,19 +45,29 @@ hci_command ($type: u8 = 0x01) = {
   @data: [u8; @length];
   public command: apply @data choose {
     Reset = reset(@ocf) |
-    SetEventFilter = set_event_filter(@ocf)
+    SetEventFilter = set_event_filter(@ocf) |
+    Flush = flush(@ocf) |
+    WriteLocalName = write_local_name(@ocf)
   };
 }
 
+// reset
 reset ($ocf: u16 = 0x0003) = {}
+reset_response ($ocf: u16 = 0x0003) = {
+  public status: response_status();
+}
 
-set_event_filter ($ocf: u16 = 0x0C05) = {
+// set_event_filter
+set_event_filter ($ocf: u16 = 0x0005) = {
   @filter_type: u8;
   public filter: choose {
     ClearAllFilter = clear_all_filter(@filter_type) |
     InquiryResult = inquiry_result(@filter_type) |
     ConnectionSetup = connection_setup(@filter_type)
   };
+}
+set_event_filter_response ($ocf: u16 = 0x0005) = {
+  public status: response_status();
 }
 
 inquiry_result ($filter_type: u8 = 0x01) = {
@@ -63,4 +99,44 @@ match_class ($condition_type: u8 = 0x01) = {
 
 match_address ($condition_type: u8 = 0x02) = {
   public address: [u8; 6];
+}
+
+// flush
+flush ($ocf: u16 = 0x0008) = {
+  public connection_handle: u16;
+}
+
+flush_response ($ocf: u16 = 0x0008) = {
+  public status: response_status();
+  public connection_handle: u16;
+}
+
+// TODO: read_pin_type_command
+// TODO: write_pin_type_command
+// TODO: create_new_unit_key
+// TODO: read_stored_link_key
+// TODO: write_stored_link_key
+// TODO: delete_stored_link_key
+
+write_local_name ($ocf: u16 = 0x0013) = {
+  @local_name_buffer: [u8; 248];
+  public local_name: apply @local_name_buffer cstring;
+}
+
+write_local_name_response ($ocf: u16 = 0x0013) = {
+  public status: response_status();
+}
+
+read_local_name ($ocf: u16 = 0x0014) = {}
+
+read_local_name_response ($ocf: u16 = 0x0014) = {
+  public status: response_status();
+  @local_name_buffer: [u8; 248];
+  public local_name: apply @local_name_buffer cstring;
+}
+
+// 923
+
+read_connection_accept_timeout ($ocf: u16 = 0x0015) = {
+
 }
