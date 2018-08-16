@@ -1,4 +1,4 @@
-use nom::{is_alphanumeric, is_digit, is_hex_digit};
+use nom::{is_alphanumeric, is_digit, is_hex_digit, multispace};
 use std::str;
 use std::str::FromStr;
 
@@ -64,6 +64,35 @@ hci_command = {
     #[test]
     fn single_field() {
         let text = " hci_command =  { public @ocf : u8; }";
+
+        assert_eq!(
+            message(text.as_bytes()),
+            Ok((
+                &[][..],
+                Message {
+                    name: "hci_command".to_string(),
+                    args: vec![],
+                    fields: vec![Field {
+                        public: true,
+                        variable: true,
+                        name: "ocf".to_string(),
+                        apply_to: None,
+                        data_type: DataType::Value("u8".to_string()),
+                        value: None,
+                    }],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn comment() {
+        let text = r"
+        // hci command
+        hci_command =  {
+            // yeah ocf
+            public @ocf : u8;
+        }";
 
         assert_eq!(
             message(text.as_bytes()),
@@ -470,7 +499,7 @@ inquiry_result = {
 
     #[test]
     fn test_file() {
-        let source = include_str!("../../protogen-examples/src/hci_message.pg");
+        let source = include_str!("../../protogen-examples/src/hci_message.protogen");
         match source_file(source.trim().as_bytes()) {
             Ok((rem, messages)) => {
                 assert_eq!(0, rem.len());
@@ -546,6 +575,10 @@ fn is_symbol_char(i: u8) -> bool {
 fn is_string_char(i: u8) -> bool {
     i != b'\"'
 }
+
+named!(comment<()>, do_parse!(tag!("//") >> take_until_and_consume!("\n") >> ()));
+
+named!(br<()>, alt!(map!(multispace, |_| ()) | comment));
 
 named!(
     symbol<&str>,
@@ -687,6 +720,7 @@ named!(
 named!(
     field<Field>,
     ws!(do_parse!(
+        many0!(br) >>
         public: opt!(tag!("public"))
             >> variable: opt!(tag!("@"))
             >> name: symbol
@@ -727,21 +761,15 @@ named!(
     ))
 );
 
-fn is_whitespace(b: u8) -> bool {
-    b == b' ' || b == b'\t' || b == b'\n' || b == b'\r'
-}
-
-named!(many_ws, take_while!(is_whitespace));
-
 named!(pub message<Message>,
-    dbg_dmp!(do_parse!(
-      many_ws >>
+    do_parse!(
+      many0!(br) >>
       name: symbol >>
-      many_ws >>
+      many0!(br) >>
       args: opt!(complete!(args)) >>
-      many_ws >>
+      many0!(br) >>
       _eq: tag!("=") >>
-      many_ws >>
+      many0!(br) >>
       fields: delimited!(tag!("{"), ws!(many0!(complete!(field))), tag!("}")) >>
       (
         Message {
@@ -749,13 +777,13 @@ named!(pub message<Message>,
             args: args.unwrap_or(vec![]),
             fields,
         }
-      ))));
+      )));
 
 named!(pub source_file<Vec<Message>>,
     do_parse!(
-        many_ws >>
-        messages: separated_list!(complete!(many_ws), complete!(message)) >>
-        opt!(complete!(many_ws)) >>
+        many0!(br) >>
+        messages: separated_list!(complete!(many1!(br)), complete!(message)) >>
+        opt!(complete!(many0!(br))) >>
         (
              messages
         )));

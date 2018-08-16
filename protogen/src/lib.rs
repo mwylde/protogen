@@ -40,7 +40,7 @@ fn process_dir_int(path: &Path, out_dir: &Path) -> io::Result<()> {
 
         if entry.file_type()?.is_dir() {
             process_dir_int(&entry.path(), out_dir)?;
-        } else if entry.path().extension().iter().any(|ext| *ext == "pg") {
+        } else if entry.path().extension().iter().any(|ext| *ext == "protogen") {
             process_file(&entry.path(), &out_dir)?;
         }
     };

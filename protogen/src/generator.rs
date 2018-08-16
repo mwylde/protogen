@@ -247,7 +247,7 @@ pub enum SetEventFilter_Filter {
 
     #[test]
     fn test_end_to_end() {
-        let source: &str = include_str!("../../protogen-examples/src/hci_message.pg");
+        let source: &str = include_str!("../../protogen-examples/src/hci_message.protogen");
         let messages = source_file(source.trim().as_bytes()).unwrap().1;
 
         let generator = Generator::from_messages(messages).unwrap();
