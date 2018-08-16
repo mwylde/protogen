@@ -470,7 +470,7 @@ inquiry_result = {
 
     #[test]
     fn test_file() {
-        let source = include_str!("../examples/hci_message.pg");
+        let source = include_str!("../../protogen-examples/src/hci_message.pg");
         match source_file(source.trim().as_bytes()) {
             Ok((rem, messages)) => {
                 assert_eq!(0, rem.len());

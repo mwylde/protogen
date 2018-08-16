@@ -1,11 +1,2 @@
-[package]
-name = "protogen"
-version = "0.1.0"
-authors = ["Micah Wylde <micah@micahw.com>"]
-
-[dependencies]
-quote = "0.6.5"
-
-[dependencies.nom]
-version = "^4.0"
-features = ["verbose-errors"]
+[workspace]
+members = [ "protogen", "protogen-examples" ]
