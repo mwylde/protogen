@@ -20,7 +20,9 @@ hci_event ($type: u8 = 0x04) = {
 
 command_complete ($event_code: u8 = 0x0E) = {
   @num_packets: u8;
-  @ocf: u16;
+  @opcode: u16;
+  ogf: u8 = @opcode >> 10;
+  @ocf: u16 = @opcode & 0b1111111111;
   public @response: choose {
     Reset = reset_response(@ocf) |
     SetEventFilter = set_event_filter_response(@ocf) |
@@ -40,7 +42,9 @@ response_status = {
 ////////////////////////////
 
 hci_command ($type: u8 = 0x01) = {
-  @ocf: u16;
+  @opcode: u16;
+  ogf: u8 = @opcode >> 10;
+  @ocf: u16 = @opcode & 0b1111111111;
   @length: u8;
   @data: [u8; @length];
   public command: apply @data choose {

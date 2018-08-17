@@ -7,7 +7,8 @@ mod tests {
 
     #[test]
     fn test_event_filter() {
-        let msg = [0x01u8, 0x05, 0x00, 0x01, 0x00];
+        // let msg = [0x01u8, 0x05, 0x00, 0x01, 0x00];
+        let msg = hex::decode("01050c0100").unwrap();
 
         println!("{:?}", HciMessage::parse(&msg));
     }
@@ -22,7 +23,8 @@ mod tests {
         0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\
         0000000000000000000000000000000000000000000000000").unwrap();
 
-        println!("{:?}", HciMessage::parse(&msg));
+        let parsed = HciMessage::parse(&msg);
+        println!("{:?}", parsed);
     }
 }
 

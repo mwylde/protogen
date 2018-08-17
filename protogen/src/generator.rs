@@ -30,7 +30,7 @@ mod tests {
                 "",
                 &DataType::Array {
                     data_type: Box::new(DataType::Value("u8".to_string())),
-                    length: Expression::Number(8),
+                    length: Expression::Value(Value::Number(8)),
                 }
             )
         );
@@ -51,9 +51,9 @@ mod tests {
             t(
                 "",
                 &DataType::Array {
-                    length: Expression::Number(8),
+                    length: Expression::Value(Value::Number(8)),
                     data_type: Box::new(DataType::Array {
-                        length: Expression::Number(8),
+                        length: Expression::Value(Value::Number(8)),
                         data_type: Box::new(DataType::Message {
                             name: "hci_command".to_string(),
                             args: vec![],
@@ -68,7 +68,7 @@ mod tests {
                 name: "HciCommand".to_string(),
                 data_type: DataType::Array {
                     data_type: Box::new(DataType::Value("u8".to_string())),
-                    length: Expression::Number(8),
+                    length: Expression::Value(Value::Number(8)),
                 },
             },
             ChooseVariant {
@@ -155,7 +155,7 @@ pub enum HciCommand_Message {
                         name: "data".to_string(),
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
-                        value: Some(Value::Number(10)),
+                        value: Some(Expression::Value(Value::Number(10))),
                     },
                     Field {
                         public: false,
@@ -166,7 +166,7 @@ pub enum HciCommand_Message {
                             name: "SomeMessage".to_string(),
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Number(8),
+                                length: Expression::Value(Value::Number(8)),
                             },
                         }]),
                         value: None,
@@ -439,6 +439,19 @@ impl Generator {
         }
     }
 
+    fn render_expression(variable_context: &str, ex: &Expression) -> String {
+        println!("rendering: {:?}", ex);
+        match ex {
+            Expression::Value(Value::String(s)) => format!("\"{}\"", s),
+            Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
+            Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
+            Expression::Binop(op, lh, rh) => format!("{} {} {}",
+                Generator::render_expression(variable_context, &*lh),
+                op,
+                Generator::render_expression(variable_context, &*rh)),
+        }
+    }
+
     fn parser_for_data_type(prefix: &str, data_type: &DataType) -> Result<String, String> {
         Ok(match data_type {
             DataType::Value(ref s) => {
@@ -460,12 +473,8 @@ impl Generator {
                 if args.is_empty() {
                     format!("{}::parse", fun)
                 } else {
-                    let args: Vec<String> = args.iter().map(|arg| {
-                        match arg {
-                            Expression::Variable(v) => format!("_{}", &v[1..]),
-                            Expression::Number(n) => format!("{:X}", n),
-                        }
-                    }).collect();
+                    let args: Vec<String> = args.iter()
+                        .map(|e| Generator::render_expression("", e)).collect();
                     format!("call!({}::parse, {})", fun, args.join(", "))
                 }
             },
@@ -484,11 +493,17 @@ impl Generator {
                 let subparser = Generator::parser_for_data_type(prefix, data_type)?;
 
                 let l = match length {
-                    Expression::Number(n) => {
+                    Expression::Value(Value::String(s)) => {
+                        format!("\"{}\"", s)
+                    },
+                    Expression::Value(Value::Number(n)) => {
                         format!("{}", n)
                     },
                     Expression::Variable(v) => {
                         format!("_{} as usize", &v[1..])
+                    },
+                    _ => {
+                        unimplemented!();
                     }
                 };
 
@@ -546,6 +561,10 @@ impl Generator {
         let mut input_idx = 0;
         let mut output_idx = 1;
         for f in &message.fields {
+            if f.value.is_some() {
+                continue;
+            }
+
             let v = if let Some(ref target) = f.apply_to {
                 let (i, _, tf) = io.get(&target[1..]).ok_or(format!(
                     "Could not find stream {} for {} in {}", target, f.name, message.name))?;
@@ -554,8 +573,9 @@ impl Generator {
                     if let DataType::Value(ref v) = **data_type {
                        if v == "u8" {
                            let l = match length {
-                               Expression::Number(n) => n.to_string(),
+                               Expression::Value(Value::Number(n)) => n.to_string(),
                                Expression::Variable(s) => format!("_{}", &s[1..]),
+                               _ => unimplemented!()
                            };
 
                            (format!("&{}[..{} as usize]", i, l), "_".to_string(), f)
@@ -587,18 +607,20 @@ impl Generator {
         for f in &message.fields {
             let prefix = [&message_type[..], &to_camel_case(&f.name, true)].join("_");
 
-            let (input, output, _) = io.get(&f.name[..])
-                .expect("missing i/o info for field");
-
-            if let Some(_) = &f.value {
-                unimplemented!("parser values have not been implemented yet");
+            if let Some(ex) = &f.value {
+                let data_type = Generator::render_data_type(&prefix, &mut vec![], &f.data_type);
+                fun.body.push(format!("let _{}: {} = ({}) as {};", f.name,
+                                      data_type, Generator::render_expression("", ex), data_type));
             } else {
+                let (input, output, _) = io.get(&f.name[..])
+                    .expect("missing i/o info for field");
+
                 fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
                                       input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
-            }
 
-            if output != "_" {
-                final_output = output;
+                if output != "_" {
+                    final_output = output;
+                }
             }
         }
 
@@ -634,23 +656,30 @@ impl Generator {
                 let prefix = &[&s.name[..], &to_camel_case(&f.name, true)].join("_");
                 let data_type = Generator::render_data_type(prefix, &mut enums, &f.data_type);
 
+                let return_type = if f.value.is_some() {
+                    data_type.to_string()
+                } else {
+                    // TODO: if this is a copy type, don't use a reference
+                    format!("&{}", data_type)
+                };
+
                 let mut getter = Function {
                     name: format!("get_{}", f.name),
                     public: true,
-                    args: vec![],
-                    // TODO: if this is a copy type, don't use a reference
-                    return_type: Some(format!("&{}", data_type)),
+                    args: vec!["&self".to_string()],
+                    return_type: Some(return_type),
                     body: vec![],
                 };
 
                 if let Some(v) = &f.value {
-                    getter.body.push(format!("&{:?}", v));
+                    getter.body.push(format!("({}) as {}",
+                        Generator::render_expression("self.", v),
+                        data_type));
                 } else {
                     s.fields.push(StructField {
                         name: format!("_{}", f.name),
                         data_type,
                     });
-                    getter.args.push("&self".to_string());
                     getter.body.push(format!("&self._{}", f.name));
                 }
 
