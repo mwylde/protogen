@@ -741,7 +741,9 @@ named!(apply<String>,
 named!(binop<Expression>,
     ws!(do_parse!(
         lh: terminal_expression >>
-        op: map_res!(alt!(tag!("|") | tag!("&") | tag!("<<") | tag!(">>")), str::from_utf8) >>
+        op: map_res!(alt!(
+            tag!("|") | tag!("&") | tag!("<<") | tag!(">>") |
+            tag!("-") | tag!("+")), str::from_utf8) >>
         rh: expression >>
         ( Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh))))));
 

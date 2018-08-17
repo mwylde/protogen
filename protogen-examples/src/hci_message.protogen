@@ -19,19 +19,33 @@ hci_event ($type: u8 = 0x04) = {
 }
 
 command_complete ($event_code: u8 = 0x0E) = {
-  @num_packets: u8;
+  // number of hci packets which are allowed to be sent to the controller
+  public @num_packets: u8;
   @opcode: u16;
   ogf: u8 = @opcode >> 10;
-  @ocf: u16 = @opcode & 0b1111111111;
+  @ocf: u16 = @opcode & 0x400 - 1;
   public @response: choose {
+    NoAssociatedCommand = no_associated_command(@ocf) |
     Reset = reset_response(@ocf) |
     SetEventFilter = set_event_filter_response(@ocf) |
     Flush = flush_response(@ocf) |
     WriteLocalName = write_local_name_response(@ocf) |
-    ReadLocalName = read_local_name_response(@ocf)
-
+    ReadLocalName = read_local_name_response(@ocf) |
+    ReadConnectionAcceptTimeout = read_connection_accept_timeout_response(@ocf) |
+    WriteConnectionAcceptTimeout = write_connection_accept_timeout_response(@ocf) |
+    ReadPageTimeout = read_page_timeout_response(@ocf) |
+    WritePageTimeout = write_page_timeout_response(@ocf) |
+    ReadScanEnable = read_scan_enable_response(@ocf) |
+    WriteScanEnable = write_scan_enable_response(@ocf) |
+    ReadPageScanActivity = read_page_scan_activity_response(@ocf) |
+    WritePageScanActivity = write_page_scan_activity_response(@ocf) |
+    ReadInquiryScanActivity = read_inquiry_scan_activity_response(@ocf) |
+    WriteInquiryScanActivity = write_inquiry_scan_activity_response(@ocf)
   };
 }
+
+// sent to update the number of command packets that can be sent
+no_associated_command ($ocf: u16 = 0x0000) = {}
 
 response_status = {
   public status_code: u8;
@@ -44,14 +58,25 @@ response_status = {
 hci_command ($type: u8 = 0x01) = {
   @opcode: u16;
   ogf: u8 = @opcode >> 10;
-  @ocf: u16 = @opcode & 0b1111111111;
+  @ocf: u16 = @opcode & 0x400 - 1;
   @length: u8;
   @data: [u8; @length];
   public command: apply @data choose {
     Reset = reset(@ocf) |
     SetEventFilter = set_event_filter(@ocf) |
     Flush = flush(@ocf) |
-    WriteLocalName = write_local_name(@ocf)
+    WriteLocalName = write_local_name(@ocf) |
+    ReadLocalName = read_local_name(@ocf) |
+    ReadConnectionAcceptTimeout = read_connection_accept_timeout(@ocf) |
+    WriteConnectionAcceptTimeout = write_connection_accept_timeout(@ocf) |
+    ReadPageTimeout = read_page_timeout(@ocf) |
+    WritePageTimeout = write_page_timeout(@ocf) |
+    ReadScanEnable = read_scan_enable(@ocf) |
+    WriteScanEnable = write_scan_enable(@ocf) |
+    ReadPageScanActivity = read_page_scan_activity(@ocf) |
+    WritePageScanActivity = write_page_scan_activity(@ocf) |
+    ReadInquiryScanActivity = read_inquiry_scan_activity(@ocf) |
+    WriteInquiryScanActivity = write_inquiry_scan_activity(@ocf)
   };
 }
 
@@ -139,8 +164,93 @@ read_local_name_response ($ocf: u16 = 0x0014) = {
   public local_name: apply @local_name_buffer cstring;
 }
 
-// 923
-
+// connection accept timeout
 read_connection_accept_timeout ($ocf: u16 = 0x0015) = {
+}
 
+read_connection_accept_timeout_response ($ocf: u16 = 0x0015) = {
+  public status: response_status();
+  public connection_accept_timeout: u16;
+}
+
+write_connection_accept_timeout ($ocf: u16 = 0x0016) = {
+  public connection_accept_timeout: u16;
+}
+
+write_connection_accept_timeout_response ($ocf: u16 = 0x0016) = {
+  public status: response_status();
+}
+
+// page timeout
+read_page_timeout ($ocf: u16 = 0x0017) = {
+}
+
+read_page_timeout_response ($ocf: u16 = 0x0017) = {
+  public status: response_status();
+  public page_timeout: u16;
+}
+
+write_page_timeout ($ocf: u16 = 0x0018) = {
+  public page_timeout: u16;
+}
+
+write_page_timeout_response ($ocf: u16 = 0x0018) = {
+  public status: response_status();
+}
+
+
+// scan enable
+read_scan_enable ($ocf: u16 = 0x0019) = {
+}
+
+read_scan_enable_response ($ocf: u16 = 0x0019) = {
+  public status: response_status();
+  public scan_enable: u8;
+}
+
+write_scan_enable ($ocf: u16 = 0x001A) = {
+  public scan_enable: u8;
+}
+
+write_scan_enable_response ($ocf: u16 = 0x001A) = {
+  public status: response_status();
+}
+
+
+// page scan activity
+read_page_scan_activity ($ocf: u16 = 0x001B) = {
+}
+
+read_page_scan_activity_response ($ocf: u16 = 0x001B) = {
+  public status: response_status();
+  public page_scan_interval: u16;
+  public page_scan_window: u16;
+}
+
+write_page_scan_activity ($ocf: u16 = 0x001C) = {
+  public page_scan_interval: u16;
+  public page_scan_window: u16;
+}
+
+write_page_scan_activity_response ($ocf: u16 = 0x001C) = {
+  public status: response_status();
+}
+
+// inquiry scan activity
+read_inquiry_scan_activity ($ocf: u16 = 0x001D) = {
+}
+
+read_inquiry_scan_activity_response ($ocf: u16 = 0x001D) = {
+  public status: response_status();
+  public inquiry_scan_interval: u16;
+  public inquiry_scan_window: u16;
+}
+
+write_inquiry_scan_activity ($ocf: u16 = 0x001E) = {
+  public inquiry_scan_interval: u16;
+  public inquiry_scan_window: u16;
+}
+
+write_inquiry_scan_activity_response ($ocf: u16 = 0x001E) = {
+  public status: response_status();
 }
