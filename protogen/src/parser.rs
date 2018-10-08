@@ -335,6 +335,56 @@ hci_message ($name: u32) = {
         );
     }
 
+    fn ex_var(s: &str) -> Expression {
+        Expression::Variable(s.to_string())
+    }
+
+    fn ex_num(d: u64) -> Expression {
+        Expression::Value(Value::Number(d))
+    }
+
+    #[test]
+    fn str_utf8() {
+        let text = r#"
+message = {
+  @len = u8;
+  public str = str_utf8(@len);
+}"#;
+
+        assert_eq!(
+            message(text.as_bytes()),
+            Ok((
+                &[][..],
+                Message {
+                    name: "message".to_string(),
+                    args: vec![],
+                    fields: vec![
+                        Field {
+                            public: false,
+                            variable: true,
+                            name: "len".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None,
+                        },
+                        Field {
+                            public: true,
+                            variable: false,
+                            name: "str".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Message {
+                                name: "str_utf8".to_string(),
+                                args: vec![
+                                    Expression::Variable("@len".to_string())
+                                ]
+                            },
+                            value: None,
+                        }
+                    ]
+                }))
+        )
+    }
+
     #[test]
     fn array() {
         let text = r#"
@@ -342,6 +392,7 @@ hci_command = {
   @type: [u8; 12];
   @length: u8;
   public @data: [u8; @length];
+  expr: [u8; @length / 2];
 }"#;
 
         assert_eq!(
@@ -378,7 +429,20 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Variable("@length".to_string()),
+                                length: ex_var("@length"),
+                            },
+                            value: None,
+                        },
+                        Field {
+                            public: false,
+                            variable: false,
+                            name: "expr".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Array {
+                                data_type: Box::new(DataType::Value("u8".to_string())),
+                                length: Expression::Binop("/".to_string(),
+                                                          Box::new(ex_var("@length")),
+                                                          Box::new(ex_num(2)))
                             },
                             value: None,
                         },
@@ -743,7 +807,7 @@ named!(binop<Expression>,
         lh: terminal_expression >>
         op: map_res!(alt!(
             tag!("|") | tag!("&") | tag!("<<") | tag!(">>") |
-            tag!("-") | tag!("+")), str::from_utf8) >>
+            tag!("-") | tag!("+") | tag!("/")), str::from_utf8) >>
         rh: expression >>
         ( Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh))))));
 

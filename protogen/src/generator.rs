@@ -410,12 +410,13 @@ pub struct Generator {
 impl Generator {
     fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
-            DataType::Value(v) if *v == "cstring" => "String".to_string(),
+            DataType::Value(v) if v == "cstring" => "String".to_string(),
             DataType::Value(v)  => v.clone(),
             DataType::Array { ref data_type, .. } => format!(
                 "Vec<{}>",
                 Generator::render_data_type(prefix, enums, &*data_type)
             ),
+            DataType::Message { ref name, ..} if name == "str_utf8" => "String".to_string(),
             DataType::Message { ref name, .. } => to_camel_case(name, true),
             DataType::Choose(variants) => {
                 let e = Enum {
@@ -468,6 +469,14 @@ impl Generator {
                     t => return Err(format!("Unknown type {} in {}", t, prefix)),
                 }
             },
+            DataType::Message { ref name, ref args} if name == "str_utf8" => {
+                if args.len() != 1 {
+                    return Err(format!("Expected one argument to str_utf8, found {}", args.len()));
+                }
+
+                format!("map_res!(take!({}), |v: &[u8]| String::from_utf8(v.to_owned()))",
+                        Generator::render_expression("", &args.get(0).unwrap()))
+            },
             DataType::Message { ref name, ref args } => {
                 let fun = to_camel_case(name, true);
                 if args.is_empty() {
@@ -502,8 +511,8 @@ impl Generator {
                     Expression::Variable(v) => {
                         format!("_{} as usize", &v[1..])
                     },
-                    _ => {
-                        unimplemented!();
+                    expr @ Expression::Binop(..) => {
+                        format!("({}) as usize", Generator::render_expression("", &expr))
                     }
                 };
 

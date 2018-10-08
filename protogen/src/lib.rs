@@ -55,7 +55,6 @@ fn process_file(path: &Path, out_dir: &Path) -> io::Result<()>  {
 
     match parser::source_file(&data) {
         Ok((rest, messages)) => {
-
             let rest = String::from_utf8_lossy(&rest);
 
             if rest.trim().is_empty() {
