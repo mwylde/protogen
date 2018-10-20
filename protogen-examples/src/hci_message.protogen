@@ -40,7 +40,8 @@ command_complete ($event_code: u8 = 0x0E) = {
     ReadPageScanActivity = read_page_scan_activity_response(@ogf, @ocf) |
     WritePageScanActivity = write_page_scan_activity_response(@ogf, @ocf) |
     ReadInquiryScanActivity = read_inquiry_scan_activity_response(@ogf, @ocf) |
-    WriteInquiryScanActivity = write_inquiry_scan_activity_response(@ogf, @ocf)
+    WriteInquiryScanActivity = write_inquiry_scan_activity_response(@ogf, @ocf) |
+    LESetAdvertisingData = le_set_advertising_data_response(@ogf, @ocf)
   };
 }
 
@@ -77,6 +78,7 @@ hci_command ($type: u8 = 0x01) = {
     WritePageScanActivity = write_page_scan_activity(@ogf, @ocf) |
     ReadInquiryScanActivity = read_inquiry_scan_activity(@ogf, @ocf) |
     WriteInquiryScanActivity = write_inquiry_scan_activity(@ogf, @ocf) |
+    LESetAdvertisingData = le_set_advertising_data(@ogf, @ocf) |
     Unknown = unknown(@ogf, @ocf)
   };
 }
@@ -315,15 +317,42 @@ le_set_advertising_parameters_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0006) = {
 // le_set_advertising_data
 le_set_advertising_data ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
   @advertising_data_length: u8;
-  public advertising_data: [u8; @advertising_data_length];
+  @advertising_data_buffer: [u8; @advertising_data_length];
+  public advertising_data: apply @advertising_data_buffer many!(le_advertising_data());
 }
 
-le_advertising_data() = {
-  count: u8;
-  evt_type: u8;
+le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
+  public status: response_status();
 }
+
 
 // advertising data
+le_advertising_data() = {
+  @length: u8;
+  @type: u8;
+  public data: choose {
+    IncompleteServiceUuid16 = incomplete_service_uuid_16(@type, @length - 1) |
+    CompleteServiceUuid16 = complete_service_uuid_16(@type, @length - 1) |
+    IncompleteServiceUuid32 = incomplete_service_uuid_32(@type, @length - 1) |
+    CompleteServiceUuid32 = complete_service_uuid_32(@type, @length - 1) |
+    IncompleteServiceUuid128 = incomplete_service_uuid_128(@type, @length - 1) |
+    CompleteServiceUuid128 = complete_service_uuid_128(@type, @length - 1) |
+    ShortenedLocalName = shortened_local_name(@type, @length - 1) |
+    CompleteLocalName = complete_local_name(@type, @length - 1) |
+    ADFlags = ad_flags(@type, @length - 1) |
+    ManufacturerSpecificData = manufacturer_specific_data(@type, @length - 1) |
+    TxPowerLevel = tx_power_level(@type, @length - 1) |
+    SlaveConnectionIntervalRange = slave_connection_interval_range(@type, @length - 1) |
+    ServiceSolicitation16 = service_solicitation_16(@type, @length - 1) |
+    ServiceSolicitation32 = service_solicitation_32(@type, @length - 1) |
+    ServiceSolicitation128 = service_solicitation_128(@type, @length - 1) |
+    ServiceData16 = service_data_16(@type, @length - 1) |
+    ServiceData32 = service_solicitation_32(@type, @length - 1) |
+    ServiceData128 = service_data_128(@type, @length - 1) |
+    Appearance = appearance(@type, @length - 1) |
+    OtherAdvertisingData = other_advertising_data(@type, @length - 1)
+  };
+}
 
 //service uuids -- CSSv7 pg. 10
 incomplete_service_uuid_16($type: u8 = 0x02, $len: u8) = {
@@ -424,10 +453,6 @@ other_advertising_data($type: u8, $len: u8) = {
   public data: [u8; $len];
 }
 
-
-//le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
-//  public status: response_status();
-//}
 
 //    ReadLEHostSupported = OCF_READ_LE_HOST_SUPPORTED | (OGF_HOST_CTL as u16) << 10,
 //    WriteLEHostSupported = OCF_WRITE_LE_HOST_SUPPORTED | (OGF_HOST_CTL as u16) << 10,

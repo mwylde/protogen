@@ -636,6 +636,9 @@ pub enum DataType {
         name: String,
         args: Vec<Expression>,
     },
+    ManyCombinator {
+        data_type: Box<DataType>,
+    },
     Choose(Vec<ChooseVariant>)
 }
 
@@ -772,6 +775,16 @@ named!(
 );
 
 named!(
+    many_combinator_type<DataType>,
+    ws!(do_parse!(
+        tag!("many!")
+            >> data_type: delimited!(tag!("("), data_type, tag!(")"))
+            >> (DataType::ManyCombinator {
+                data_type: Box::new(data_type),
+            })
+    )));
+
+named!(
     choose_type<DataType>,
     ws!(do_parse!(
         _choose: tag!("choose")
@@ -839,6 +852,7 @@ named!(
         complete!(array_type)
             | complete!(choose_type)
             | complete!(message_type)
+            | complete!(many_combinator_type)
             | map!(complete!(symbol), |s| DataType::Value(s.to_string()))
     ))
 );

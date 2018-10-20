@@ -418,6 +418,9 @@ impl Generator {
             ),
             DataType::Message { ref name, ..} if name == "str_utf8" => "String".to_string(),
             DataType::Message { ref name, .. } => to_camel_case(name, true),
+            DataType::ManyCombinator { ref data_type } => {
+                format!("Vec<{}>", Generator::render_data_type(prefix, enums, &*data_type))
+            }
             DataType::Choose(variants) => {
                 let e = Enum {
                     name: prefix.to_string(),
@@ -517,6 +520,10 @@ impl Generator {
                 };
 
                 format!("count!({}, {})", subparser, l)
+            }
+            DataType::ManyCombinator { ref data_type } => {
+                let subparser = Generator::parser_for_data_type(prefix, data_type)?;
+                format!("many0!({})", subparser)
             }
         })
     }
