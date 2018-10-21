@@ -5,6 +5,7 @@ use std::path::Path;
 use std::env;
 use std::fs;
 use std::io;
+use parser::Message;
 
 pub mod generator;
 pub mod parser;
@@ -27,30 +28,36 @@ pub fn process_dir(path: &Path) -> io::Result<()> {
 
     fs::create_dir_all(out_dir)?;
 
-    process_dir_int(path, out_dir)?;
+    let messages = parse_dir_int(path)?;
+
+    // let name = path.file_stem().expect("not a file");
+    let name = path.components().last().expect("not a valid path");
+    let out_file = out_dir.join(Path::new(&name)).with_extension("rs");
+
+    process(messages, &out_file)?;
 
     Ok(())
 }
 
-fn process_dir_int(path: &Path, out_dir: &Path) -> io::Result<()> {
+fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
     println!("process dir {}", path.to_string_lossy());
+
+    let mut messages = vec![];
 
     for entry in fs::read_dir(path)? {
         let entry = entry?;
 
         if entry.file_type()?.is_dir() {
-            process_dir_int(&entry.path(), out_dir)?;
+            messages.extend(parse_dir_int(&entry.path())?);
         } else if entry.path().extension().iter().any(|ext| *ext == "protogen") {
-            process_file(&entry.path(), &out_dir)?;
+            messages.extend(parse_file(&entry.path())?);
         }
     };
 
-    Ok(())
+    Ok(messages)
 }
 
-fn process_file(path: &Path, out_dir: &Path) -> io::Result<()>  {
-    println!("processing {}", path.to_string_lossy());
-
+fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
     let data = fs::read(path)?;
 
     match parser::source_file(&data) {
@@ -58,10 +65,7 @@ fn process_file(path: &Path, out_dir: &Path) -> io::Result<()>  {
             let rest = String::from_utf8_lossy(&rest);
 
             if rest.trim().is_empty() {
-                let name = path.file_stem().expect("not a file");
-                let out_file = out_dir.join(Path::new(name)).with_extension("rs");
-                fs::write(&out_file, convert_error(
-                    generator::Generator::from_messages(messages))?.to_string())?;
+                return Ok(messages);
             } else {
                 return Err(io::Error::new(io::ErrorKind::Other,
                                           format!("Parse error at {}", rest)));
@@ -72,6 +76,13 @@ fn process_file(path: &Path, out_dir: &Path) -> io::Result<()>  {
                                       format!("Parse error {:?}", e)));
         }
     }
+}
+
+fn process(messages: Vec<Message>, out_path: &Path) -> io::Result<()>  {
+    // let name = path.file_stem().expect("not a file");
+    // let out_file = out_dir.join(Path::new(name)).with_extension("rs");
+    fs::write(&out_path, convert_error(
+        generator::Generator::from_messages(messages))?.to_string())?;
 
     Ok(())
 }

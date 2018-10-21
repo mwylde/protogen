@@ -347,8 +347,8 @@ hci_message ($name: u32) = {
     fn str_utf8() {
         let text = r#"
 message = {
-  @len = u8;
-  public str = str_utf8(@len);
+  @len: u8;
+  public str: str_utf8(@len);
 }"#;
 
         assert_eq!(

@@ -705,7 +705,7 @@ impl Generator {
             }
 
 
-            imp.functions.push(Generator::parse_fn( message)?);
+            imp.functions.push(Generator::parse_fn(&message)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));

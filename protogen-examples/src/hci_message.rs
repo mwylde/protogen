@@ -1,4 +1,4 @@
-include!(concat!(env!("OUT_DIR"), "/hci_message.rs"));
+include!(concat!(env!("OUT_DIR"), "/protogen-examples.rs"));
 
 #[cfg(test)]
 mod tests {
