@@ -1,0 +1,38 @@
+hci_event ($type: u8 = 0x04) = {
+  @event_code: u8;
+  @parameter_length: u8;
+  @data: [u8; @parameter_length];
+  public event: apply @data choose {
+    CommandComplete = command_complete(@event_code)
+  };
+}
+
+command_complete ($event_code: u8 = 0x0E) = {
+  // number of hci packets which are allowed to be sent to the controller
+  public @num_packets: u8;
+  @opcode: u16;
+  @ogf: u8 = @opcode >> 10;
+  @ocf: u16 = @opcode & 0x400 - 1;
+  public @response: choose {
+    NoAssociatedCommand = no_associated_command(@ogf, @ocf) |
+    Reset = reset_response(@ogf, @ocf) |
+    SetEventFilter = set_event_filter_response(@ogf, @ocf) |
+    Flush = flush_response(@ogf, @ocf) |
+    WriteLocalName = write_local_name_response(@ogf, @ocf) |
+    ReadLocalName = read_local_name_response(@ogf, @ocf) |
+    ReadConnectionAcceptTimeout = read_connection_accept_timeout_response(@ogf, @ocf) |
+    WriteConnectionAcceptTimeout = write_connection_accept_timeout_response(@ogf, @ocf) |
+    ReadPageTimeout = read_page_timeout_response(@ogf, @ocf) |
+    WritePageTimeout = write_page_timeout_response(@ogf, @ocf) |
+    ReadScanEnable = read_scan_enable_response(@ogf, @ocf) |
+    WriteScanEnable = write_scan_enable_response(@ogf, @ocf) |
+    ReadPageScanActivity = read_page_scan_activity_response(@ogf, @ocf) |
+    WritePageScanActivity = write_page_scan_activity_response(@ogf, @ocf) |
+    ReadInquiryScanActivity = read_inquiry_scan_activity_response(@ogf, @ocf) |
+    WriteInquiryScanActivity = write_inquiry_scan_activity_response(@ogf, @ocf) |
+    LESetAdvertisingData = le_set_advertising_data_response(@ogf, @ocf)
+  };
+}
+
+// sent to update the number of command packets that can be sent
+no_associated_command ($ogf: u8, $ocf: u16 = 0x0000) = {}

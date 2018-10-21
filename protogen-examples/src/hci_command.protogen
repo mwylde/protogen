@@ -1,0 +1,297 @@
+hci_command ($type: u8 = 0x01) = {
+  @opcode: u16;
+  @ogf: u8 = @opcode >> 10;
+  @ocf: u16 = @opcode & 0x400 - 1;
+  @length: u8;
+  @data: [u8; @length];
+  public command: apply @data choose {
+    Reset = reset(@ogf, @ocf) |
+    SetEventFilter = set_event_filter(@ogf, @ocf) |
+    Flush = flush(@ogf, @ocf) |
+    WriteLocalName = write_local_name(@ogf, @ocf) |
+    ReadLocalName = read_local_name(@ogf, @ocf) |
+    ReadConnectionAcceptTimeout = read_connection_accept_timeout(@ogf, @ocf) |
+    WriteConnectionAcceptTimeout = write_connection_accept_timeout(@ogf, @ocf) |
+    ReadPageTimeout = read_page_timeout(@ogf, @ocf) |
+    WritePageTimeout = write_page_timeout(@ogf, @ocf) |
+    ReadScanEnable = read_scan_enable(@ogf, @ocf) |
+    WriteScanEnable = write_scan_enable(@ogf, @ocf) |
+    ReadPageScanActivity = read_page_scan_activity(@ogf, @ocf) |
+    WritePageScanActivity = write_page_scan_activity(@ogf, @ocf) |
+    ReadInquiryScanActivity = read_inquiry_scan_activity(@ogf, @ocf) |
+    WriteInquiryScanActivity = write_inquiry_scan_activity(@ogf, @ocf) |
+    LESetAdvertisingData = le_set_advertising_data(@ogf, @ocf) |
+    Unknown = unknown(@ogf, @ocf)
+  };
+}
+
+// used by most command complete messages
+response_status = {
+  public status_code: u8;
+}
+
+// unknown command
+unknown ($ogf: u8, $ocf: u16) = {}
+
+// reset
+reset ($ogf: u8 = 0x03, $ocf : u16 = 0x0003) = {}
+reset_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0003) = {
+  public status: response_status();
+}
+
+// set_event_filter
+set_event_filter ($ogf: u8 = 0x03, $ocf : u16 = 0x0005) = {
+  @filter_type: u8;
+  public filter: choose {
+    ClearAllFilter = clear_all_filter(@filter_type) |
+    InquiryResult = inquiry_result(@filter_type) |
+    ConnectionSetup = connection_setup(@filter_type)
+  };
+}
+set_event_filter_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0005) = {
+  public status: response_status();
+}
+
+inquiry_result ($filter_type: u8 = 0x01) = {
+  public condition: filter_condition();
+}
+
+connection_setup ($filter_type: u8 = 0x02) = {
+  public condition: filter_condition();
+  public auto_accept: u8;
+}
+
+filter_condition = {
+  @condition_type: u8;
+  public value: choose {
+    AllDevices = all_devices(@condition_type) |
+    MatchClass = match_class(@condition_type) |
+    MatchAddress = match_address(@condition_type)
+  };
+}
+
+clear_all_filter($filter_type: u8 = 0x00) = {}
+
+all_devices ($condition_type: u8 = 0x00) = {}
+
+match_class ($condition_type: u8 = 0x01) = {
+  public class_of_device: [u8; 3];
+  public class_of_device_mask: [u8; 3];
+}
+
+match_address ($condition_type: u8 = 0x02) = {
+  public address: [u8; 6];
+}
+
+// flush
+flush ($ogf: u8 = 0x03, $ocf : u16 = 0x0008) = {
+  public connection_handle: u16;
+}
+
+flush_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0008) = {
+  public status: response_status();
+  public connection_handle: u16;
+}
+
+// TODO: read_pin_type_command
+// TODO: write_pin_type_command
+// TODO: create_new_unit_key
+// TODO: read_stored_link_key
+// TODO: write_stored_link_key
+// TODO: delete_stored_link_key
+
+write_local_name ($ogf: u8 = 0x03, $ocf : u16 = 0x0013) = {
+  @local_name_buffer: [u8; 248];
+  public local_name: apply @local_name_buffer cstring;
+}
+
+write_local_name_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0013) = {
+  public status: response_status();
+}
+
+read_local_name ($ogf: u8 = 0x03, $ocf : u16 = 0x0014) = {}
+
+read_local_name_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0014) = {
+  public status: response_status();
+  @local_name_buffer: [u8; 248];
+  public local_name: apply @local_name_buffer cstring;
+}
+
+// connection accept timeout
+read_connection_accept_timeout ($ogf: u8 = 0x03, $ocf : u16 = 0x0015) = {
+}
+
+read_connection_accept_timeout_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0015) = {
+  public status: response_status();
+  public connection_accept_timeout: u16;
+}
+
+write_connection_accept_timeout ($ogf: u8 = 0x03, $ocf : u16 = 0x0016) = {
+  public connection_accept_timeout: u16;
+}
+
+write_connection_accept_timeout_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0016) = {
+  public status: response_status();
+}
+
+// page timeout
+read_page_timeout ($ogf: u8 = 0x03, $ocf : u16 = 0x0017) = {
+}
+
+read_page_timeout_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0017) = {
+  public status: response_status();
+  public page_timeout: u16;
+}
+
+write_page_timeout ($ogf: u8 = 0x03, $ocf : u16 = 0x0018) = {
+  public page_timeout: u16;
+}
+
+write_page_timeout_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0018) = {
+  public status: response_status();
+}
+
+
+// scan enable
+read_scan_enable ($ogf: u8 = 0x03, $ocf : u16 = 0x0019) = {
+}
+
+read_scan_enable_response ($ogf: u8 = 0x03, $ocf : u16 = 0x0019) = {
+  public status: response_status();
+  public scan_enable: u8;
+}
+
+write_scan_enable ($ogf: u8 = 0x03, $ocf : u16 = 0x001A) = {
+  public scan_enable: u8;
+}
+
+write_scan_enable_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001A) = {
+  public status: response_status();
+}
+
+
+// page scan activity
+read_page_scan_activity ($ogf: u8 = 0x03, $ocf : u16 = 0x001B) = {
+}
+
+read_page_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001B) = {
+  public status: response_status();
+  public page_scan_interval: u16;
+  public page_scan_window: u16;
+}
+
+write_page_scan_activity ($ogf: u8 = 0x03, $ocf : u16 = 0x001C) = {
+  public page_scan_interval: u16;
+  public page_scan_window: u16;
+}
+
+write_page_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001C) = {
+  public status: response_status();
+}
+
+// inquiry scan activity
+read_inquiry_scan_activity ($ogf: u8 = 0x03, $ocf : u16 = 0x001D) = {
+}
+
+read_inquiry_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001D) = {
+  public status: response_status();
+  public inquiry_scan_interval: u16;
+  public inquiry_scan_window: u16;
+}
+
+write_inquiry_scan_activity ($ogf: u8 = 0x03, $ocf : u16 = 0x001E) = {
+  public inquiry_scan_interval: u16;
+  public inquiry_scan_window: u16;
+}
+
+write_inquiry_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001E) = {
+  public status: response_status();
+}
+
+// le set event mask
+le_set_event_mask ($ogf: u8 = 0x08, $ocf: u16 = 0x0001) = {
+  public le_event_mask: [u8; 8];
+}
+
+le_set_event_mask_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0001) = {
+  public status: response_status();
+}
+
+// le read buffer size
+le_read_buffer_size ($ogf: u8 = 0x08, $ocf: u16 = 0x0002) = {
+}
+
+le_read_buffer_size_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0002) = {
+  public status: response_status();
+  public hc_le_data_packet_length: u16;
+  public hc_total_num_le_data_packets: u8;
+}
+
+// le_read_local_supported_features
+le_read_local_supported_features ($ogf: u8 = 0x08, $ocf: u16 = 0x0003) = {
+}
+
+le_read_local_supported_features_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0003) = {
+  public status: response_status();
+  public le_features: [u8; 8];
+}
+
+// le_set_random_address_command
+le_set_random_address_command ($ogf: u8 = 0x08, $ocf: u16 = 0x0004) = {
+  public random_address: [u8; 6];
+}
+
+le_set_random_address_command_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0004) = {
+  public status: response_status();
+}
+
+// le_set_advertising_parameters
+le_set_advertising_parameters ($ogf: u8 = 0x08, $ocf: u16 = 0x0006) = {
+  public advertising_interval_min: u16;
+  public advertising_interval_max: u16;
+  public advertising_type: u8;
+  public own_address_type: u8;
+  public peer_address_type: u8;
+  public peer_address: [u8; 6];
+  public advertising_channel_map: u8;
+  public advertising_filter_policy: u8;
+}
+
+le_set_advertising_parameters_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0006) = {
+  public status: response_status();
+}
+
+// le_set_advertising_data
+le_set_advertising_data ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
+  @advertising_data_length: u8;
+  @advertising_data_buffer: [u8; @advertising_data_length];
+  public advertising_data: apply @advertising_data_buffer many!(le_advertising_data());
+}
+
+le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
+  public status: response_status();
+}
+
+//    ReadLEHostSupported = OCF_READ_LE_HOST_SUPPORTED | (OGF_HOST_CTL as u16) << 10,
+//    WriteLEHostSupported = OCF_WRITE_LE_HOST_SUPPORTED | (OGF_HOST_CTL as u16) << 10,
+//    ReadLocalVersion = OCF_READ_LOCAL_VERSION | (OGF_INFO_PARAM as u16) << 10,
+//    ReadBDAddr = OCF_READ_BD_ADDR | (OGF_INFO_PARAM as u16) << 10,
+//    ReadRSSI = OCF_READ_RSSI | (OGF_STATUS_PARAM as u16) << 10,
+//
+//    ChangeLocalName = 0x0C13,
+//    WriteExtendedInquiryResponse = 0x0C52,
+//
+//    LESetScanParameters = OCF_LE_SET_SCAN_PARAMETERS | (OGF_LE_CTL as u16) << 10,
+//    LESetScanEnabled = OCF_LE_SET_SCAN_ENABLE | (OGF_LE_CTL as u16) << 10,
+//    LECreateConnection = OCF_LE_CREATE_CONN | (OGF_LE_CTL as u16) << 10,
+//    LEConnectionUpdate = OCF_LE_CONN_UPDATE | (OGF_LE_CTL as u16) << 10,
+//    LEStartEncryption = OCF_LE_START_ENCRYPTION | (OGF_LE_CTL as u16) << 10,
+//
+//    LESetAdvertisingData = 0x2008,
+//    LESetScanResponseData = 0x2009,
+//    LEAddDeviceToWhiteList = 0x2011,
+//    LERemoveDeviceFromWhiteList = 0x2012,
+//    LEReadRemoteUsedFeatures = 0x2016,
+
+end_thing () = {}
+
