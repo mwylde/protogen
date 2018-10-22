@@ -224,81 +224,121 @@ write_inquiry_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001E) = {
 
 // TODO: read authentication enable (pg. 936)
 // TODO: write authentication enable (pg. 937)
-// TODO: read class of device command (pg. 938)
-// TODO: write class of device command (pg. 939)
-// TODO: read voice setting command (pg. 940)
-// TODO: write voice setting command (pg. 941)
-// TODO: read automatic flush timeout command (pg. 942)
-// TODO: write automatic flush timeout command  (pg. 944)
-// TODO: read num broadcast retransmissions command  (pg. 946)
-// TODO: write num broadcast retransmissions command (pg. 947)
-// TODO: read hold mode activity command (pg. 948)
-// TODO: write hold mode activity command  (pg. 949)
-// TODO: read transmit power level command (pg. 950)
-// TODO: read synchronous flow control enable command  (pg. 952)
-// TODO: write synchronous flow control enable command (pg. 953)
-// TODO: set controller to host flow control command (pg. 954)
-// TODO: host buffer size command  (pg. 956)
-// TODO: host number of completed packets command  (pg. 958)
-// TODO: read link supervision timeout command  (pg. 960)
-// TODO: write link supervision timeout command (pg. 962)
-// TODO: read number of supported iac command (pg. 964)
-// TODO: read current iac lap command (pg. 965)
-// TODO: write current iac lap command  (pg. 966)
-// TODO: set afh host channel classification command (pg. 968)
-// TODO: read inquiry scan type command (pg. 970)
-// TODO: write inquiry scan type command (pg. 971)
-// TODO: read inquiry mode command (pg. 972)
-// TODO: write inquiry mode command  (pg. 973)
-// TODO: read page scan type command  (pg. 974)
-// TODO: write page scan type command  (pg. 975)
-// TODO: read afh channel assessment mode command (pg. 976)
-// TODO: write afh channel assessment mode command (pg. 977)
-// TODO: read extended inquiry response command (pg. 979)
-// TODO(P0): write extended inquiry response command (pg. 980)
-// TODO: refresh encryption key command (pg. 981)
-// TODO: read simple pairing mode command (pg. 982)
-// TODO: write simple pairing mode command (pg. 983)
-// TODO: read local oob data command (pg. 985)
-// TODO: read inquiry response transmit power level command (pg. 987)
-// TODO: write inquiry transmit power level command (pg. 988)
-// TODO: send keypress notification command (pg. 989)
-// TODO: read default erroneous data reporting command (pg. 991)
-// TODO: write default erroneous data reporting command (pg. 992)
-// TODO: enhanced flush command (pg. 993)
-// TODO: read logical link accept timeout command (pg. 995)
-// TODO: write logical link accept timeout command (pg. 996)
-// TODO: set event mask command (pg. 997)
-// TODO: read location data command (pg. 999)
-// TODO: write location data command (pg. 1000)
-// TODO: read flow control mode command (pg. 1001)
-// TODO: write flow control mode command (pg. 1002)
-// TODO: read enhanced transmit power level command (pg. 1003)
-// TODO: read best effort flush timeout command (pg. 1005)
-// TODO: write best effort flush timeout command (pg. 1006)
-// TODO: short range mode command (pg. 1007)
-// TODO(P0): read le host support command (pg. 1008)
-// TODO(P0): write le host support command (pg. 1009)
-// TODO: set mws channel parameters command (pg. 1010)
-// TODO: set external frame configuration command (pg. 1012)
-// TODO: set mws signaling command (pg. 1015)
-// TODO: set mws transport layer command (pg. 1020)
-// TODO: set mws scan frequency table command (pg. 1021)
-// TODO: set mws_pattern configuration command (pg. 1023)
-// TODO: set reserved lt_addr command (pg. 1026)
-// TODO: delete reserved lt_addr command (pg. 1028)
-// TODO: set connectionless slave broadcast data command (pg. 1029)
-// TODO: read synchronization train parameters command (pg. 1031)
-// TODO: write synchronization train parameters command (pg. 1033)
-// TODO: read secure connections host support command 1035
-// TODO: write secure connections host support command (pg. 1036)
-// TODO: read authenticated payload timeout command (pg. 1038)
-// TODO: write authenticated payload timeout command (pg. 1040)
-// TODO: read local oob extended data command (pg. 1042)
-// TODO: read extended page timeout command (pg. 1044)
-// TODO: write extended page timeout command (pg. 1045)
-// TODO: read extended inquiry length command (pg. 1046)
-// TODO: write extended inquiry length command (pg. 1047)
+// TODO: read class of device (pg. 938)
+// TODO: write class of device (pg. 939)
+// TODO: read voice setting (pg. 940)
+// TODO: write voice setting (pg. 941)
+// TODO: read automatic flush timeout (pg. 942)
+// TODO: write automatic flush timeout  (pg. 944)
+// TODO: read num broadcast retransmissions  (pg. 946)
+// TODO: write num broadcast retransmissions (pg. 947)
+// TODO: read hold mode activity (pg. 948)
+// TODO: write hold mode activity (pg. 949)
+// TODO: read transmit power level (pg. 950)
+// TODO: read synchronous flow control enable (pg. 952)
+// TODO: write synchronous flow control enable (pg. 953)
+// TODO: set controller to host flow control (pg. 954)
+// TODO: host buffer size  (pg. 956)
+// TODO: host number of completed packets  (pg. 958)
+// TODO: read link supervision timeout  (pg. 960)
+// TODO: write link supervision timeout (pg. 962)
+// TODO: read number of supported iac (pg. 964)
+// TODO: read current iac lap (pg. 965)
+// TODO: write current iac lap  (pg. 966)
+// TODO: set afh host channel classification (pg. 968)
+// TODO: read inquiry scan type (pg. 970)
+// TODO: write inquiry scan type (pg. 971)
+// TODO: read inquiry mode (pg. 972)
+// TODO: write inquiry mode  (pg. 973)
+// TODO: read page scan type  (pg. 974)
+// TODO: write page scan type  (pg. 975)
+// TODO: read afh channel assessment mode (pg. 976)
+// TODO: write afh channel assessment mode (pg. 977)
+
+// read extended inquiry response (pg. 979)
+read_extended_inquiry_response ($ogf: u8 = 0x03, $ocf: u16 = 0x0051) = {
+}
+
+read_extended_inquiry_response_response ($ogf: u8 = 0x03, $ocf: u16 = 0x0051) = {
+  public status: response_status();
+  public fec_required: u8;
+  response_buffer: [u8; 240];
+  public advertising_data: apply @response_buffer many!(basic_data_type());
+}
+
+// write extended inquiry response (pg. 980)
+write_extended_inquiry_response ($ogf: u8 = 0x03, $ocf: u16 = 0x0052) = {
+  public fec_required: u8;
+  response_buffer: [u8; 240];
+  public advertising_data: apply @response_buffer many!(basic_data_type());
+}
+
+write_extended_inquiry_response_response ($ogf: u8 = 0x03, $ocf: u16 = 0x0052) = {
+  public status: response_status();
+}
+
+// TODO: refresh encryption key (pg. 981)
+// TODO: read simple pairing mode (pg. 982)
+// TODO: write simple pairing mode (pg. 983)
+// TODO: read local oob data (pg. 985)
+// TODO: read inquiry response transmit power level (pg. 987)
+// TODO: write inquiry transmit power level (pg. 988)
+// TODO: send keypress notification (pg. 989)
+// TODO: read default erroneous data reporting (pg. 991)
+// TODO: write default erroneous data reporting (pg. 992)
+// TODO: enhanced flush (pg. 993)
+// TODO: read logical link accept timeout (pg. 995)
+// TODO: write logical link accept timeout (pg. 996)
+// TODO: set event mask (pg. 997)
+// TODO: read location data (pg. 999)
+// TODO: write location data (pg. 1000)
+// TODO: read flow control mode (pg. 1001)
+// TODO: write flow control mode (pg. 1002)
+// TODO: read enhanced transmit power level (pg. 1003)
+// TODO: read best effort flush timeout (pg. 1005)
+// TODO: write best effort flush timeout (pg. 1006)
+// TODO: short range mode (pg. 1007)
+
+// read le host support (pg. 1008)
+read_le_host_support ($ogf: u8 = 0x03, $ocf: u16 = 0x006C) = {
+}
+
+read_le_host_support_response ($ogf: u8 = 0x03, $ocf: u16 = 0x006C) = {
+  public status: response_status();
+  public le_supported_host: u8;
+  public simultaneous_le_host: u8;
+}
+
+// write le host support (pg. 1009)
+write_le_host_support ($ogf: u8 = 0x03, $ocf: u16 = 0x006D) = {
+  public le_supported_host: u8;
+  public simultaneous_le_host: u8;
+}
+
+write_le_host_support_response ($ogf: u8 = 0x03, $ocf: u16 = 0x006D) = {
+  public status: response_status();
+}
+
+// TODO: set mws channel parameters (pg. 1010)
+// TODO: set external frame configuration (pg. 1012)
+// TODO: set mws signaling (pg. 1015)
+// TODO: set mws transport layer (pg. 1020)
+// TODO: set mws scan frequency table (pg. 1021)
+// TODO: set mws_pattern configuration (pg. 1023)
+// TODO: set reserved lt_addr (pg. 1026)
+// TODO: delete reserved lt_addr (pg. 1028)
+// TODO: set connectionless slave broadcast data (pg. 1029)
+// TODO: read synchronization train parameters (pg. 1031)
+// TODO: write synchronization train parameters (pg. 1033)
+// TODO: read secure connections host support 1035
+// TODO: write secure connections host support (pg. 1036)
+// TODO: read authenticated payload timeout (pg. 1038)
+// TODO: write authenticated payload timeout (pg. 1040)
+// TODO: read local oob extended data (pg. 1042)
+// TODO: read extended page timeout (pg. 1044)
+// TODO: write extended page timeout (pg. 1045)
+// TODO: read extended inquiry length (pg. 1046)
+// TODO: write extended inquiry length (pg. 1047)
 
 
 //////////////////////////////////////
@@ -307,14 +347,14 @@ write_inquiry_scan_activity_response ($ogf: u8 = 0x03, $ocf : u16 = 0x001E) = {
 //           (OGF=0x04)             //
 //////////////////////////////////////
 
-// TODO(P0): read local version information command (pg. 1048)
-// TODO: read local supported commands command (pg. 1050)
-// TODO: read local supported features command (pg. 1051)
-// TODO: read local extended features command (pg. 1052)
-// TODO: read buffer size command (pg. 1054)
-// TODO(P0): read bd_addr command (pg. 1056)
-// TODO: read data block size command (pg. 1057)
-// TODO: read local supported codecs command (pg. 1059)
+// TODO(P0): read local version information (pg. 1048)
+// TODO: read local supported commands (pg. 1050)
+// TODO: read local supported features (pg. 1051)
+// TODO: read local extended features (pg. 1052)
+// TODO: read buffer size (pg. 1054)
+// TODO(P0): read bd_addr (pg. 1056)
+// TODO: read data block size (pg. 1057)
+// TODO: read local supported codecs (pg. 1059)
 
 
 //////////////////////////////////////
@@ -417,7 +457,7 @@ le_set_advertising_parameters_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0006) = {
 le_set_advertising_data ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
   @advertising_data_length: u8;
   @advertising_data_buffer: [u8; @advertising_data_length];
-  public advertising_data: apply @advertising_data_buffer many!(le_advertising_data());
+  public advertising_data: apply @advertising_data_buffer many!(basic_data_type());
 }
 
 le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {

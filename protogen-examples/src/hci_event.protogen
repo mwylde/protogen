@@ -108,7 +108,9 @@ no_associated_command ($ogf: u8, $ocf: u16 = 0x0000) = {}
 // TODO: amp start test event (pg. 1186)
 // TODO: amp test end event (pg. 1187)
 // TODO: amp receiver report event (pg. 1188)
-// TODO: le meta event (pg. 1190)
+
+// le meta event (pg. 1190) -- see le_meta_event.protogen
+
 // TODO: triggered clock capture event (pg. 1230)
 // TODO: synchronization train complete event (pg. 1232)
 // TODO: synchronization train received event (pg. 1233)
