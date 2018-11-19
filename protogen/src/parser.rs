@@ -1,4 +1,4 @@
-use nom::{is_alphanumeric, is_digit, is_hex_digit, multispace};
+use nom::*;
 use std::str;
 use std::str::FromStr;
 
