@@ -644,6 +644,7 @@ pub enum DataType {
     ManyCombinator {
         data_type: Box<DataType>,
     },
+    RestCombinator,
     Choose(Vec<ChooseVariant>)
 }
 
@@ -791,6 +792,14 @@ named!(
     )));
 
 named!(
+    rest_combinator_type<DataType>,
+    ws!(do_parse!(
+        tag!("rest!()")
+            >> (DataType::RestCombinator { })
+    )));
+
+
+named!(
     choose_type<DataType>,
     ws!(do_parse!(
         _choose: tag!("choose")
@@ -859,6 +868,7 @@ named!(
             | complete!(choose_type)
             | complete!(message_type)
             | complete!(many_combinator_type)
+            | complete!(rest_combinator_type)
             | map!(complete!(symbol), |s| DataType::Value(s.to_string()))
     ))
 );

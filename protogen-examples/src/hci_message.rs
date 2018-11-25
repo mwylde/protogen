@@ -26,5 +26,13 @@ mod tests {
         let parsed = HciMessage::parse(&msg);
         println!("{:?}", parsed);
     }
+
+    #[test]
+    fn test_unknown_command() {
+        let msg = hex::decode("040e0601120c000000").unwrap();
+
+        let parsed = HciMessage::parse(&msg);
+        print!("{:?}", parsed);
+    }
 }
 

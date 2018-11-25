@@ -452,6 +452,7 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
+    helpers: HashMap<String, Function>,
     messages: Vec<Message>,
     imports: HashSet<String>,
     structs: HashMap<String, Struct>,
@@ -473,6 +474,7 @@ impl Generator {
             DataType::ManyCombinator { ref data_type } => {
                 format!("Vec<{}>", Generator::render_data_type(prefix, enums, &*data_type))
             }
+            DataType::RestCombinator => "Vec<u8>".to_string(),
             DataType::Choose(variants) => {
                 let e = Enum {
                     name: prefix.to_string(),
@@ -577,6 +579,9 @@ impl Generator {
                 let subparser = Generator::parser_for_data_type(prefix, data_type)?;
                 format!("many0!({})", subparser)
             }
+            DataType::RestCombinator => {
+                "rest".to_string()
+            }
         })
     }
 
@@ -604,6 +609,25 @@ impl Generator {
         })
     }
 
+    fn add_helper(data_type: &DataType, helpers: &mut HashMap<String, Function>) {
+        match data_type {
+            DataType::RestCombinator => {
+                if !helpers.contains_key("rest") {
+                    helpers.insert("rest".to_string(), Function {
+                        name: "rest".to_string(),
+                        public: false,
+                        args: vec!["i: &[u8]".to_string()],
+                        return_type: Some("IResult<&[u8], Vec<u8>>".to_string()),
+                        body: vec![
+                            "Ok((&[][..], i.to_vec()))".to_string()
+                        ]
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn render_value(value: &Value) -> String {
         match value {
             Value::String(s) => format!(r#""{}""#, s),
@@ -611,7 +635,7 @@ impl Generator {
         }
     }
 
-    fn parse_fn(message: &Message) -> Result<Function, String> {
+    fn parse_fn(message: &Message, helpers: &mut HashMap<String, Function>) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
@@ -683,6 +707,8 @@ impl Generator {
             if io.insert(&f.name[..], v).is_some() {
                 return Err(format!("duplicate field {} in {}", f.name, message.name));
             }
+
+            Generator::add_helper(&f.data_type, helpers);
         };
 
         let mut final_output = "_i0";
@@ -769,6 +795,7 @@ impl Generator {
     }
 
     pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
+        let mut helpers = HashMap::new();
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
@@ -798,7 +825,7 @@ impl Generator {
                                      &mut s, &mut imp, &mut enums);
             }
 
-            imp.functions.push(Generator::parse_fn(&message)?);
+            imp.functions.push(Generator::parse_fn(&message, &mut helpers)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
@@ -821,6 +848,7 @@ impl Generator {
         }
 
         Ok(Generator {
+            helpers,
             messages,
             imports,
             structs,
@@ -836,6 +864,12 @@ impl fmt::Display for Generator {
         ordered_imports.sort();
         for import in ordered_imports {
             write!(f, "use {};\n", import)?;
+        }
+
+        write!(f, "\n")?;
+
+        for helper in &self.helpers {
+            write!(f, "{}\n", helper.1)?;
         }
 
         write!(f, "\n")?;

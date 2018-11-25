@@ -74,15 +74,18 @@ command_complete ($event_code: u8 = 0x0E) = {
     LeSetAdvertisingParameters = le_set_advertising_parameters_response(@ogf, @ocf) |
     LESetAdvertisingData = le_set_advertising_data_response(@ogf, @ocf) |
     LeSetScanParameters = le_set_scan_parameters_response(@ogf, @ocf) |
-    LeSetScanEnable = le_set_scan_enable_response(@ogf, @ocf)
+    LeSetScanEnable = le_set_scan_enable_response(@ogf, @ocf) |
+
+    UnknownCommand = unknown_command(@ogf, @ocf)
   };
 }
 
 // sent to update the number of command packets that can be sent
 no_associated_command ($ogf: u8, $ocf: u16 = 0x0000) = {}
 
-unknown_command (public $ogf: u8, public $ocf: u8) = {
+unknown_command (public $ogf: u8, public $ocf: u16) = {
   status: response_status();
+  data: rest!();
 }
 
 // TODO: command status event (pg. 1123)
