@@ -209,7 +209,7 @@ pub enum HciCommand_Message {
         };
 
         let expected = r#"
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct HciCommand {
     length: u8,
     name: String,
@@ -236,7 +236,7 @@ pub struct HciCommand {
 
         let expected = r#"
 #[allow(non_camel_case_types)]
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum SetEventFilter_Filter {
     ClearAllFilter(ClearAllFilter),
     InquiryResult(String),
@@ -295,7 +295,7 @@ struct Struct {
 
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]\n")?;
+        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n")?;
         write!(f, "pub struct {} {{\n", self.name)?;
 
         for field in &self.fields {
@@ -327,7 +327,7 @@ struct Enum {
 impl fmt::Display for Enum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "#[allow(non_camel_case_types)]\n")?;
-        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]\n")?;
+        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n")?;
         write!(f, "pub enum {} {{\n", self.name)?;
 
         for field in &self.variants {
@@ -528,6 +528,18 @@ impl Generator {
         })
     }
 
+    fn use_ref(data_type: &DataType) -> bool {
+        match data_type {
+            DataType::Value(ref v) => {
+                match v.as_ref() {
+                    "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => false,
+                    _ => true
+                }
+            }
+            _ => true
+        }
+    }
+
     fn arg_type(data_type: &DataType) -> Result<String, String> {
         Ok(match data_type {
             DataType::Value(ref v) => v.clone(),
@@ -672,11 +684,17 @@ impl Generator {
                 let prefix = &[&s.name[..], &to_camel_case(&f.name, true)].join("_");
                 let data_type = Generator::render_data_type(prefix, &mut enums, &f.data_type);
 
-                let return_type = if f.value.is_some() {
+                let use_ref = Generator::use_ref(&f.data_type);
+
+                let return_type = if f.value.is_some() || !use_ref {
                     data_type.to_string()
                 } else {
-                    // TODO: if this is a copy type, don't use a reference
-                    format!("&{}", data_type)
+                    // TODO: this is very hacky
+                    if data_type.starts_with("Vec<") && data_type.ends_with(">") {
+                        format!("&[{}]", &data_type[4..data_type.len() - 1])
+                    } else {
+                        format!("&{}", data_type)
+                    }
                 };
 
                 let mut getter = Function {
@@ -689,14 +707,18 @@ impl Generator {
 
                 if let Some(v) = &f.value {
                     getter.body.push(format!("({}) as {}",
-                        Generator::render_expression("self.", v),
-                        data_type));
+                                             Generator::render_expression("self.", v),
+                                             data_type));
                 } else {
                     s.fields.push(StructField {
                         name: format!("_{}", f.name),
                         data_type,
                     });
-                    getter.body.push(format!("&self._{}", f.name));
+                    if use_ref {
+                        getter.body.push(format!("&self._{}", f.name));
+                    } else {
+                        getter.body.push(format!("self._{}", f.name));
+                    }
                 }
 
                 if f.public {
