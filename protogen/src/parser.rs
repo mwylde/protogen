@@ -116,7 +116,7 @@ hci_command = {
 
     #[test]
     fn message_args() {
-        let text = " hci_command ($type: u8, $name: String) = { }";
+        let text = " hci_command ($type: u8, public $name: String) = { }";
 
         assert_eq!(
             message(text.as_bytes()),
@@ -126,11 +126,13 @@ hci_command = {
                     name: "hci_command".to_string(),
                     args: vec![
                         Arg {
+                            public: false,
                             name: "type".to_string(),
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                         },
                         Arg {
+                            public: true,
                             name: "name".to_string(),
                             data_type: DataType::Value("String".to_string()),
                             value: None,
@@ -154,11 +156,13 @@ hci_command = {
                     name: "hci_command".to_string(),
                     args: vec![
                         Arg {
+                            public: false,
                             name: "type".to_string(),
                             data_type: DataType::Value("u8".to_string()),
                             value: Some(Value::Number(0xFF)),
                         },
                         Arg {
+                            public: false,
                             name: "name".to_string(),
                             data_type: DataType::Value("String".to_string()),
                             value: Some(Value::String("hello world!".to_string())),
@@ -291,6 +295,7 @@ hci_message ($name: u32) = {
                 Message {
                     name: "hci_message".to_string(),
                     args: vec![Arg {
+                        public: false,
                         name: "name".to_string(),
                         data_type: DataType::Value("u32".to_string()),
                         value: None,
@@ -642,7 +647,7 @@ pub enum DataType {
     Choose(Vec<ChooseVariant>)
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum Value {
     String(String),
     Number(u64),
@@ -666,6 +671,7 @@ pub struct ChooseVariant {
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Arg {
+    pub public: bool,
     pub name: String,
     pub data_type: DataType,
     pub value: Option<Value>,
@@ -894,11 +900,13 @@ named!(
         separated_list!(
             tag!(","),
             do_parse!(
-                _sigil: tag!("$")
+                    public: opt!(tag!("public"))
+                    >> _sigil: tag!("$")
                     >> name: symbol
                     >> _colon: tag!(":")
                     >> type_name: symbol
                     >> value: opt!(assign_value) >> (Arg {
+                    public: public.is_some(),
                     name: name.to_string(),
                     data_type: DataType::Value(type_name.to_string()),
                     value: value,

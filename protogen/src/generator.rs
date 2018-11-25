@@ -10,6 +10,7 @@ use std::collections::HashSet;
 mod tests {
     use super::*;
     use parser::{source_file, ChooseVariant, Expression, Field, Value};
+    use parser::Arg;
 
     #[test]
     fn test_to_camel_case() {
@@ -112,16 +113,48 @@ mod tests {
         assert_eq!(expected, enums);
     }
 
-    // #[test]
-    #[allow(dead_code)]
+    #[test]
     fn test_render_struct() {
         let expected = r#"
+use nom;
+use nom::*;
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct HciCommand {
-    ocf: u8,
-    length: u8,
-    message: HciCommand_Message,
+    _type: u8,
+    _public_arg: u8,
+    _ocf: u8,
+    _length: u8,
+    _message: HciCommand_Message,
 }
 
+impl HciCommand {
+    pub fn get_public_arg(&self) -> u8 {
+        self._public_arg
+    }
+
+    pub fn get_ocf(&self) -> u8 {
+        self._ocf
+    }
+
+    pub fn parse(_i0: &[u8], _type: u8, _with_value: u16, _public_arg: u8) -> IResult<&[u8], HciCommand> {
+        if _with_value != 0xA {
+            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+        }
+        let (_i1, _ocf) = try_parse!(_i0, le_u8);
+        let (_i2, _length) = try_parse!(_i1, le_u8);
+        let _data: u8 = (0xA) as u8;
+        let (_i3, _message) = try_parse!(_i2, alt!(
+            count!(le_u8, 8) => {|v| HciCommand_Message::SomeMessage(v)}
+    ));
+        Ok((_i3, HciCommand { _type, _public_arg, _ocf, _length, _message }))
+    }
+
+}
+
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum HciCommand_Message {
     SomeMessage(Vec<u8>),
 }
@@ -131,7 +164,26 @@ pub enum HciCommand_Message {
             expected.trim(),
             Generator::from_messages(vec![Message {
                 name: "hci_command".to_string(),
-                args: vec![],
+                args: vec![
+                    Arg {
+                        public: false,
+                        name: "type".to_string(),
+                        data_type: DataType::Value("u8".to_string()),
+                        value: None
+                    },
+                    Arg {
+                        public: false,
+                        name: "with_value".to_string(),
+                        data_type: DataType::Value("u16".to_string()),
+                        value: Some(Value::Number(10u64)),
+                    },
+                    Arg {
+                        public: true,
+                        name: "public_arg".to_string(),
+                        data_type: DataType::Value("u8".to_string()),
+                        value: None,
+                    }
+                ],
                 fields: vec![
                     Field {
                         public: true,
@@ -588,12 +640,14 @@ impl Generator {
 
         let mut input_idx = 0;
         let mut output_idx = 1;
+
         for f in &message.fields {
             if f.value.is_some() {
                 continue;
             }
 
             let v = if let Some(ref target) = f.apply_to {
+                // TODO: support applying to arguments
                 let (i, _, tf) = io.get(&target[1..]).ok_or(format!(
                     "Could not find stream {} for {} in {}", target, f.name, message.name))?;
 
@@ -652,13 +706,66 @@ impl Generator {
             }
         }
 
-        let construct_args: Vec<String> = message.fields.iter().filter(|f| f.value.is_none())
-            .map(|f| format!("_{}", f.name)).collect();
+        let mut construct_args: Vec<String> = message.args.iter()
+            .filter(|a| a.value.is_none())
+            .map(|a| format!("_{}", a.name))
+            .collect();
+
+        construct_args.extend(message.fields.iter()
+            .filter(|f| f.value.is_none())
+            .map(|f| format!("_{}", f.name)));
 
         fun.body.push(format!("Ok(({}, {} {{ {} }}))", final_output, message_type,
                               construct_args.join(", ")));
 
         Ok(fun)
+    }
+
+    fn add_field(public: bool, name: &str, data_type: &DataType,
+                 value: Option<&Expression>, st: &mut Struct, imp: &mut Impl, enums: &mut Vec<Enum>) {
+        let prefix = &[&st.name[..], &to_camel_case(name, true)].join("_");
+        let data_type_string = Generator::render_data_type(prefix, enums, data_type);
+
+        let use_ref = Generator::use_ref(data_type);
+
+        let return_type = if value.is_some() || !use_ref {
+            data_type_string.to_string()
+        } else {
+            // TODO: this is very hacky
+            if data_type_string.starts_with("Vec<") && data_type_string.ends_with(">") {
+                format!("&[{}]", &data_type_string[4..data_type_string.len() - 1])
+            } else {
+                format!("&{}", data_type_string)
+            }
+        };
+
+        let mut getter = Function {
+            name: format!("get_{}", name),
+            public: true,
+            args: vec!["&self".to_string()],
+            return_type: Some(return_type),
+            body: vec![],
+        };
+
+        if let Some(v) = value {
+            getter.body.push(format!("({}) as {}",
+                                     Generator::render_expression("self.", v),
+                                     data_type_string));
+        } else {
+            st.fields.push(StructField {
+                name: format!("_{}", name),
+                data_type: data_type_string,
+            });
+            if use_ref {
+                getter.body.push(format!("&self._{}", name));
+            } else {
+                getter.body.push(format!("self._{}", name));
+            }
+        }
+
+        if public {
+            imp.functions.push(getter);
+        }
     }
 
     pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
@@ -680,52 +787,16 @@ impl Generator {
                 functions: vec![],
             };
 
-            for f in &message.fields {
-                let prefix = &[&s.name[..], &to_camel_case(&f.name, true)].join("_");
-                let data_type = Generator::render_data_type(prefix, &mut enums, &f.data_type);
-
-                let use_ref = Generator::use_ref(&f.data_type);
-
-                let return_type = if f.value.is_some() || !use_ref {
-                    data_type.to_string()
-                } else {
-                    // TODO: this is very hacky
-                    if data_type.starts_with("Vec<") && data_type.ends_with(">") {
-                        format!("&[{}]", &data_type[4..data_type.len() - 1])
-                    } else {
-                        format!("&{}", data_type)
-                    }
-                };
-
-                let mut getter = Function {
-                    name: format!("get_{}", f.name),
-                    public: true,
-                    args: vec!["&self".to_string()],
-                    return_type: Some(return_type),
-                    body: vec![],
-                };
-
-                if let Some(v) = &f.value {
-                    getter.body.push(format!("({}) as {}",
-                                             Generator::render_expression("self.", v),
-                                             data_type));
-                } else {
-                    s.fields.push(StructField {
-                        name: format!("_{}", f.name),
-                        data_type,
-                    });
-                    if use_ref {
-                        getter.body.push(format!("&self._{}", f.name));
-                    } else {
-                        getter.body.push(format!("self._{}", f.name));
-                    }
-                }
-
-                if f.public {
-                    imp.functions.push(getter);
-                }
+            for arg in &message.args {
+                let value = arg.value.as_ref().map(|v| Expression::Value(v.clone()));
+                Generator::add_field(arg.public, &arg.name, &arg.data_type, value.as_ref(),
+                                     &mut s, &mut imp, &mut enums);
             }
 
+            for f in &message.fields {
+                Generator::add_field(f.public, &f.name, &f.data_type, f.value.as_ref(),
+                                     &mut s, &mut imp, &mut enums);
+            }
 
             imp.functions.push(Generator::parse_fn(&message)?);
 
@@ -761,7 +832,9 @@ impl Generator {
 
 impl fmt::Display for Generator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for import in &self.imports {
+        let mut ordered_imports: Vec<&String> = self.imports.iter().collect();
+        ordered_imports.sort();
+        for import in ordered_imports {
             write!(f, "use {};\n", import)?;
         }
 

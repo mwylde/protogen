@@ -81,6 +81,10 @@ command_complete ($event_code: u8 = 0x0E) = {
 // sent to update the number of command packets that can be sent
 no_associated_command ($ogf: u8, $ocf: u16 = 0x0000) = {}
 
+unknown_command (public $ogf: u8, public $ocf: u8) = {
+  status: response_status();
+}
+
 // TODO: command status event (pg. 1123)
 // TODO: hardware error event (pg. 1125)
 // TODO: flush occurred event (pg. 1126)
