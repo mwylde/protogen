@@ -466,8 +466,32 @@ le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
 
 // TODO(P0): le set scan response data (pg. 1257)
 // TODO: le set advertising enable (pg. 1259)
-// TODO(P0): le set scan parameters (pg. 1261)
-// TODO(P0): le set scan enable  (pg. 1264)
+
+// le set scan parameters (pg. 1261)
+
+le_set_scan_parameters ($ogf: u8 = 0x08, $ocf: u16 = 0x000B) = {
+  public le_scan_type: u8;
+  public le_scan_interval: u16;
+  public le_scan_window: u16;
+  public own_address_type: u8;
+  public scanning_filter_policy: u8;
+}
+
+le_set_scan_parameters_response ($ogf: u8 = 0x08, $ocf: u16 = 0x000B) = {
+  public status: response_status();
+}
+
+// le set scan enable  (pg. 1264)
+
+le_set_scan_enable ($ogf: u8 = 0x08, $ocf: u16 = 0x000C) = {
+  public le_scan_enable: u8;
+  public filter_duplicates: u8;
+}
+
+le_set_scan_enable_response ($ogf: u8 = 0x08, $ocf: u16 = 0x000C) = {
+  public status: response_status();
+}
+
 // TODO(P0): le create connection (pg. 1266)
 // TODO: le create connection cancel (pg. 1271)
 // TODO: le read white list size (pg. 1272)
@@ -535,6 +559,6 @@ le_set_advertising_data_response ($ogf: u8 = 0x08, $ocf: u16 = 0x0008) = {
 // TODO: le write rf path compensation (pg. 1391)
 // TODO: le set privacy mode (pg. 1393)
 
-// the parser doesn't current support comments at the end of a file :(
+// the parser doesn't currently support comments at the end of a file :(
 end_thing () = {}
 

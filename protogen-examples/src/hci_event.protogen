@@ -3,7 +3,9 @@ hci_event ($type: u8 = 0x04) = {
   @parameter_length: u8;
   @data: [u8; @parameter_length];
   public event: apply @data choose {
-    CommandComplete = command_complete(@event_code)
+    DisconnectionComplete = disconnection_complete(@event_code) |
+    CommandComplete = command_complete(@event_code) |
+    LeMetaEvent = le_meta_event(@event_code)
   };
 }
 
@@ -17,7 +19,15 @@ hci_event ($type: u8 = 0x04) = {
 // TODO: inquiry result event (pg. 1105)
 // TODO: connection complete event (pg. 1107)
 // TODO: connection request event (pg. 1109)
-// TODO: disconnection complete event (pg. 1110)
+
+// disconnection complete event (pg. 1110)
+disconnection_complete ($event_code: u8 = 0x05) = {
+  public status: response_status();
+  public connection_handle: u16;
+  public reason: u8;
+}
+
+
 // TODO: authentication complete event (pg. 1111)
 // TODO: remote name request complete event (pg. 1112)
 // TODO: encryption change event (pg. 1113)
@@ -51,7 +61,20 @@ command_complete ($event_code: u8 = 0x0E) = {
     WritePageScanActivity = write_page_scan_activity_response(@ogf, @ocf) |
     ReadInquiryScanActivity = read_inquiry_scan_activity_response(@ogf, @ocf) |
     WriteInquiryScanActivity = write_inquiry_scan_activity_response(@ogf, @ocf) |
-    LESetAdvertisingData = le_set_advertising_data_response(@ogf, @ocf)
+    ReadExtendedInquiryResponse = read_extended_inquiry_response_response(@ogf, @ocf) |
+    WriteExtendedInquiryResponse = write_extended_inquiry_response_response(@ogf, @ocf) |
+    ReadLeHostSupport = read_le_host_support_response(@ogf, @ocf) |
+    WriteLeHostSupport = write_le_host_support_response(@ogf, @ocf) |
+
+    LeSetEventMask = le_set_event_mask(@ogf, @ocf) |
+    LeSetEventMaskResponse = le_set_event_mask_response(@ogf, @ocf) |
+    LeReadBufferSize = le_read_buffer_size_response(@ogf, @ocf) |
+    LeReadLocalSupportedFeatures = le_read_local_supported_features_response(@ogf, @ocf) |
+    LeSetRandomAddressCommand = le_set_random_address_command_response(@ogf, @ocf) |
+    LeSetAdvertisingParameters = le_set_advertising_parameters_response(@ogf, @ocf) |
+    LESetAdvertisingData = le_set_advertising_data_response(@ogf, @ocf) |
+    LeSetScanParameters = le_set_scan_parameters_response(@ogf, @ocf) |
+    LeSetScanEnable = le_set_scan_enable_response(@ogf, @ocf)
   };
 }
 

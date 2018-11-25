@@ -52,7 +52,7 @@ manufacturer_specific_data($type: u8 = 0xFF, $len: u8) = {
 
 // tx power level -- CSSv7 pg.13
 tx_power_level($type: u8 = 0x0A, $len: u8 = 1) = {
-  public level: u8;
+  public level: i8;
 }
 
 // TODO: secure simple pairing out of band -- CSSv7 pg.14

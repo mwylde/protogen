@@ -5,3 +5,5 @@ hci_acl_data ($type: u8 = 0x02) = {
   @data_total_length: u16;
   public data: [u8; @data_total_length];
 }
+
+
