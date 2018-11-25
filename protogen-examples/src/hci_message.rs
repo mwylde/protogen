@@ -32,7 +32,21 @@ mod tests {
         let msg = hex::decode("040e0601120c000000").unwrap();
 
         let parsed = HciMessage::parse(&msg);
-        print!("{:?}", parsed);
+        println!("{:?}", parsed);
+    }
+
+    #[test]
+    fn test_le_advertising_report() {
+        println!("doing test");
+        let data = "04 3e 28 02 01 02 01 32 9c f0 06 23 68 1c 03 03\
+                         9f fe 17 16 9f fe 00 00 00 00 00 00 00 00 00 00\
+                         00 00 00 00 00 00 00 00 00 00 b0";
+
+        let msg = hex::decode(data.replace(" ", "")).unwrap();
+
+        let parsed = HciMessage::parse(&msg).unwrap();
+        println!("{:?}", parsed);
+
     }
 }
 

@@ -5,8 +5,13 @@ hci_event ($type: u8 = 0x04) = {
   public event: apply @data choose {
     DisconnectionComplete = disconnection_complete(@event_code) |
     CommandComplete = command_complete(@event_code) |
-    LeMetaEvent = le_meta_event(@event_code)
+    LeMetaEvent = le_meta_event(@event_code) |
+    UnknownEvent = unknown_event(@event_code)
   };
+}
+
+unknown_event (public $event_code: u8) = {
+  public data: rest!();
 }
 
 //////////////////////////////////////

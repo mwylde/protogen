@@ -577,7 +577,7 @@ impl Generator {
             }
             DataType::ManyCombinator { ref data_type } => {
                 let subparser = Generator::parser_for_data_type(prefix, data_type)?;
-                format!("many0!({})", subparser)
+                format!("many0!(complete!({}))", subparser)
             }
             DataType::RestCombinator => {
                 "rest".to_string()
