@@ -635,7 +635,9 @@ impl Generator {
         }
     }
 
-    fn parse_fn(message: &Message, helpers: &mut HashMap<String, Function>) -> Result<Function, String> {
+    fn parse_fn(message: &Message,
+                helpers: &mut HashMap<String, Function>,
+                imports: &mut HashSet<String>) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
@@ -655,6 +657,7 @@ impl Generator {
                     format!("if _{} != {} {{
         return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));\n    }}",
                       arg.name, Generator::render_value(v)));
+                imports.insert("nom".to_string());
             }
         }
 
@@ -799,7 +802,7 @@ impl Generator {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
-        let imports: HashSet<String> = ["nom".to_string(), "nom::*".to_string()]
+        let mut imports: HashSet<String> = ["nom::*".to_string()]
             .iter().cloned().collect();
 
         for message in &messages {
@@ -825,7 +828,7 @@ impl Generator {
                                      &mut s, &mut imp, &mut enums);
             }
 
-            imp.functions.push(Generator::parse_fn(&message, &mut helpers)?);
+            imp.functions.push(Generator::parse_fn(&message, &mut helpers, &mut imports)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
