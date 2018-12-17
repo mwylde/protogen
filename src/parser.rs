@@ -568,6 +568,42 @@ inquiry_result = {
     }
 
     #[test]
+    fn expressions() {
+        let text = "@var * 5;";
+        assert_eq!(expression(text.as_bytes()),
+                   Ok((&[b';'][..], Expression::Binop("*".to_string(),
+                                                  Box::new(ex_var("@var")),
+                                                  Box::new(ex_num(5))))));
+
+        let text = "(@var * 5);";
+        assert_eq!(expression(text.as_bytes()),
+                   Ok((&[b';'][..], Expression::Binop("*".to_string(),
+                                                      Box::new(ex_var("@var")),
+                                                      Box::new(ex_num(5))))));
+
+        fn var_minus_five() -> Box<Expression> {
+            Box::new(Expression::Binop(
+                "-".to_string(),
+                Box::new(ex_var("@var")),
+                Box::new(ex_num(5))))
+        }
+
+        let text = "(@var - 5) * 6;";
+        assert_eq!(expression(text.as_bytes()),
+                   Ok((&[b';'][..], Expression::Binop(
+                       "*".to_string(),
+                       var_minus_five(),
+                       Box::new(ex_num(6))))));
+
+        let text = "6 * (@var - 5);";
+        assert_eq!(expression(text.as_bytes()),
+                   Ok((&[b';'][..], Expression::Binop(
+                       "*".to_string(),
+                       Box::new(ex_num(6)),
+                       var_minus_five()))));
+    }
+
+    #[test]
     fn expression_value() {
         let text = r#"
 hci_command = {
@@ -828,19 +864,21 @@ named!(apply<String>,
          ( source )
     )));
 
-// @hello & 0b0001
+named!(parens<Expression>,
+    ws!(delimited!(char!('('), expression, char!(')'))));
 
 named!(binop<Expression>,
     ws!(do_parse!(
         lh: terminal_expression >>
         op: map_res!(alt!(
             tag!("|") | tag!("&") | tag!("<<") | tag!(">>") |
-            tag!("-") | tag!("+") | tag!("/")), str::from_utf8) >>
+            tag!("-") | tag!("+") | tag!("/") | tag!("*")), str::from_utf8) >>
         rh: expression >>
         ( Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh))))));
 
 named!(terminal_expression<Expression>,
     ws!(alt!(
+        complete!(parens) => {|v| v} |
         complete!(variable) => {|v| Expression::Variable(v)} |
         complete!(value)   => {|v| Expression::Value(v)})));
 

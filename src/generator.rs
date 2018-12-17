@@ -9,7 +9,7 @@ use std::collections::HashSet;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::{source_file, ChooseVariant, Expression, Field, Value};
+    use parser::{ChooseVariant, Expression, Field, Value};
     use parser::Arg;
 
     #[test]
@@ -296,15 +296,15 @@ pub enum SetEventFilter_Filter {
 
         assert_eq!(expected.trim(), format!("{}", e));
     }
-
-    #[test]
-    fn test_end_to_end() {
-        let source: &str = include_str!("../../protogen-examples/src/hci_message.protogen");
-        let messages = source_file(source.trim().as_bytes()).unwrap().1;
-
-        let generator = Generator::from_messages(messages).unwrap();
-        println!("{}", generator);
-    }
+//
+//    #[test]
+//    fn test_end_to_end() {
+//        let source: &str = include_str!(hci_message.protogen);
+//        let messages = source_file(source.trim().as_bytes()).unwrap().1;
+//
+//        let generator = Generator::from_messages(messages).unwrap();
+//        println!("{}", generator);
+//    }
 
 }
 
@@ -503,7 +503,7 @@ impl Generator {
             Expression::Value(Value::String(s)) => format!("\"{}\"", s),
             Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
             Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
-            Expression::Binop(op, lh, rh) => format!("{} {} {}",
+            Expression::Binop(op, lh, rh) => format!("({} {} {})",
                 Generator::render_expression(variable_context, &*lh),
                 op,
                 Generator::render_expression(variable_context, &*rh)),
@@ -872,7 +872,9 @@ impl fmt::Display for Generator {
             write!(f, "{}\n", helper.1)?;
         }
 
-        write!(f, "\n")?;
+        if !self.helpers.is_empty() {
+            write!(f, "\n")?;
+        }
 
         for message in &self.messages {
             let name = to_camel_case(&message.name, true);

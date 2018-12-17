@@ -1,0 +1,14 @@
+tcp_header = {
+  public source_port: u16;
+  public destination_port: u16;
+  public sequence_number: u32;
+  public acknowledgement_number: u32;
+  @offset_and_flags: u16;
+  @data_offset: u8 = @offset_and_flags >> 10;
+  public flags: u16 = @offset_and_flags & 0x200 - 1;
+  public window_size: u16;
+  public checksum: u16;
+  // TODO: parse these
+  public options: [u8; (@data_offset - 5) * 4];
+}
+

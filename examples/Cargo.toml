@@ -4,15 +4,14 @@ version = '0.1.0'
 authors = ["Micah Wylde <micah@micahw.com>"]
 license = "Apache-2.0/MIT"
 build = "build.rs"
-workspace = ".."
 publish = false
 
 [dependencies]
 hex = "^0.3.2"
 
 [dependencies.nom]
-version = "^4.0"
+version = "^4.1"
 features = ["verbose-errors"]
 
 [build-dependencies.protogen]
-path = "../protogen"
+path = ".."

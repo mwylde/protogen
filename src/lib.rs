@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::io;
 use parser::Message;
+use std::path::PathBuf;
 
 pub mod generator;
 pub mod parser;
@@ -17,25 +18,37 @@ fn convert_error<T>(r: Result<T, String>) -> Result<T, io::Error> {
     r.map_err(|s| io::Error::new(io::ErrorKind::Other, s))
 }
 
-pub fn process_dir(path: &Path) -> io::Result<()> {
-    let out_dir = match env::var_os("OUT_DIR") {
-        Some(var) => var,
+fn get_out_dir() -> io::Result<PathBuf> {
+    match env::var_os("OUT_DIR") {
+        Some(var) => Ok(PathBuf::from(&var)),
         None => return convert_error(Err("missing OUT_DIR variable".to_string())),
-    };
+    }
+}
 
-    let out_dir = Path::new(&out_dir);
-
-    fs::create_dir_all(out_dir)?;
-
-    let messages = parse_dir_int(path)?;
-
-    // let name = path.file_stem().expect("not a file");
+pub fn process_dir(path: &Path) -> io::Result<()> {
+    let out_dir = get_out_dir()?;
     let name = path.components().last().expect("not a valid path");
     let out_file = out_dir.join(Path::new(&name)).with_extension("rs");
 
-    process(messages, &out_file)?;
+    process_dir_to(path, &out_file, None)
+}
+
+pub fn process_dir_to(path: &Path, out_file: &Path, post_process: Option<&Fn(&str) -> String>) -> io::Result<()> {
+    fs::create_dir_all(out_file.parent().expect("No parent for out file"))?;
+    let messages = parse_dir_int(path)?;
+    process(messages, &out_file, post_process)?;
 
     Ok(())
+}
+
+pub fn process_file(path: &Path, post_process: Option<&Fn(&str) -> String>) -> io::Result<()> {
+    let messages = parse_file(&path)?;
+
+    let out_dir = get_out_dir()?;
+    let name = path.components().last().expect("not a valid path");
+    let out_file = out_dir.join(Path::new(&name)).with_extension("rs");
+
+    process(messages, &out_file, post_process)
 }
 
 fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
@@ -77,11 +90,15 @@ fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
     }
 }
 
-fn process(messages: Vec<Message>, out_path: &Path) -> io::Result<()>  {
+fn process(messages: Vec<Message>, out_path: &Path, post_process: Option<&Fn(&str) -> String>) -> io::Result<()>  {
     // let name = path.file_stem().expect("not a file");
     // let out_file = out_dir.join(Path::new(name)).with_extension("rs");
-    fs::write(&out_path, convert_error(
-        generator::Generator::from_messages(messages))?.to_string())?;
+    let mut generated = convert_error(generator::Generator::from_messages(messages))?.to_string();
+    if let Some(process_fn) = post_process {
+        generated = process_fn(&generated);
+    }
+
+    fs::write(&out_path, generated)?;
 
     Ok(())
 }
