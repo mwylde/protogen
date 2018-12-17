@@ -1,5 +1,9 @@
 # Protogen
 
+[![Build Status](https://travis-ci.org/mwylde/protogen.svg?branch=master)](https://travis-ci.org/mwylde/protogen)
+[![Crates.io Version](https://img.shields.io/crates/v/protogen.svg)](https://crates.io/crates/protogen)
+[![docs](https://docs.rs/protogen/badge.svg)](https://docs.rs/protogen)
+
 Protogen is a protocol description language for generating safe and efficient
 parsers and (eventually) generators for data protocols.  
 
