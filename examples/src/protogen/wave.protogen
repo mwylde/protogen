@@ -1,0 +1,38 @@
+// Parser for the wave file format
+
+wave = {
+  chunk_id: [u8; 4] | [b"RIFF"];
+  @chunk_size: u32;
+  public format: [u8; 4] | [b"WAVE"];
+  @data_size: u32 = @chunk_size - 8;
+  @data: [u8; @data_size];
+  public chunks: apply @data many!(subchunk());
+}
+
+subchunk = {
+  @id: [u8; 4];
+  @size: u32;
+  @data: [u8; @size];
+  public subchunk: apply @data choose {
+    FormatSubchunk = fmt_subchunk(@id) |
+    DataSubchunk = data_subchunk(@id) |
+    OtherSubchunk = other_subchunk(@id)
+  };
+}
+
+fmt_subchunk ($id: [u8; 4] = b"fmt ") = {
+  public audio_format: u16;
+  public num_channels: u16;
+  public sample_rate: u32;
+  public byte_rate: u32;
+  public block_align: u16;
+  public bits_per_sample: u16;
+}
+
+data_subchunk ($id: [u8; 4] = b"data") = {
+  public data: rest!();
+}
+
+other_subchunk (public $id: [u8; 4]) = {
+  public data: rest!();
+}

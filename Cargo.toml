@@ -2,9 +2,12 @@
 name = "protogen"
 version = "0.1.0"
 authors = ["Micah Wylde <micah@micahw.com>"]
+description = """Protocol description language & parser generator"""
+license = "MIT/Apache-2.0"
+homepage = "https://github.com/mwylde/protogen"
 
 [dependencies.nom]
-version = "^4.0"
+version = "^4.1"
 features = ["verbose-errors"]
 
 [workspace]

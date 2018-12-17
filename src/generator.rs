@@ -137,8 +137,8 @@ impl HciCommand {
         self._ocf
     }
 
-    pub fn parse(_i0: &[u8], _type: u8, _with_value: u16, _public_arg: u8) -> IResult<&[u8], HciCommand> {
-        if _with_value != 0xA {
+    pub fn parse<'a>(_i0: &'a [u8], _type: u8, _with_value: u16, _public_arg: u8) -> IResult<&'a [u8], HciCommand> {
+        if 0xA != _with_value {
             return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
         }
         let (_i1, _ocf) = try_parse!(_i0, le_u8);
@@ -192,6 +192,7 @@ pub enum HciCommand_Message {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
+                        constraints: None
                     },
                     Field {
                         public: false,
@@ -200,6 +201,7 @@ pub enum HciCommand_Message {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
+                        constraints: None
                     },
                     Field {
                         public: false,
@@ -208,6 +210,7 @@ pub enum HciCommand_Message {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: Some(Expression::Value(Value::Number(10))),
+                        constraints: None
                     },
                     Field {
                         public: false,
@@ -222,6 +225,7 @@ pub enum HciCommand_Message {
                             },
                         }]),
                         value: None,
+                        constraints: None,
                     },
                 ],
             }]).unwrap()
@@ -394,6 +398,7 @@ impl fmt::Display for Enum {
 struct Function {
     name: String,
     public: bool,
+    generics: Vec<String>,
     args: Vec<String>,
     return_type: Option<String>,
     body: Vec<String>,
@@ -403,9 +408,11 @@ impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{}fn {}({})",
+            "{}fn {}{}({})",
             if self.public { "pub " } else { "" },
             self.name,
+            if !self.generics.is_empty() { format!("<{}>", self.generics.join(", "))}
+                else { String::new() },
             self.args.join(", ")
         )?;
 
@@ -498,9 +505,12 @@ impl Generator {
     }
 
     fn render_expression(variable_context: &str, ex: &Expression) -> String {
-        println!("rendering: {:?}", ex);
         match ex {
             Expression::Value(Value::String(s)) => format!("\"{}\"", s),
+            Expression::Value(Value::ByteArray(ba)) => {
+                let elements: Vec<String> = ba.iter().map(|b| format!("{}u8", b)).collect();
+                format!("&[{}][..]", elements.join(", "))
+            }
             Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
             Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
             Expression::Binop(op, lh, rh) => format!("({} {} {})",
@@ -510,7 +520,8 @@ impl Generator {
         }
     }
 
-    fn parser_for_data_type(prefix: &str, data_type: &DataType) -> Result<String, String> {
+    fn parser_for_data_type(prefix: &str, field_types: &HashMap<String, DataType>,
+                            data_type: &DataType) -> Result<String, String> {
         Ok(match data_type {
             DataType::Value(ref s) => {
                 match s.as_ref() {
@@ -539,8 +550,17 @@ impl Generator {
                 if args.is_empty() {
                     format!("{}::parse", fun)
                 } else {
-                    let args: Vec<String> = args.iter()
-                        .map(|e| Generator::render_expression("", e)).collect();
+                    let args: Vec<String> = args.iter().map(|e| {
+                        let expr = Generator::render_expression("", e);
+                        // TODO: this is super hacky
+                        let var_type = field_types.get(&expr[1..]);
+                        let is_ref = var_type.map(|dt| Generator::use_ref(dt)).unwrap_or(false);
+                        if is_ref {
+                            format!("&{}", expr)
+                        } else {
+                            expr
+                        }
+                    }).collect();
                     format!("call!({}::parse, {})", fun, args.join(", "))
                 }
             },
@@ -549,6 +569,7 @@ impl Generator {
                     format!("        {} => {{|v| {}::{}(v)}}",
                             Generator::parser_for_data_type(
                                 &[prefix, &to_camel_case(&v.name, true)].join("_"),
+                                field_types,
                                 &v.data_type).unwrap(),
                         prefix, v.name)
                 }).collect();
@@ -556,12 +577,15 @@ impl Generator {
                 format!("alt!(\n{}\n)", vs.join(" |\n"))
             },
             DataType::Array { ref data_type, ref length } => {
-                let subparser = Generator::parser_for_data_type(prefix, data_type)?;
+                let subparser = Generator::parser_for_data_type(prefix, field_types,data_type)?;
 
                 let l = match length {
-                    Expression::Value(Value::String(s)) => {
-                        format!("\"{}\"", s)
+                    Expression::Value(Value::String(_)) => {
+                        return Err("Strings cannot be array lengths".to_string());
                     },
+                    Expression::Value(Value::ByteArray(_)) => {
+                        return Err("Byte arrays cannot be array lengths".to_string());
+                    }
                     Expression::Value(Value::Number(n)) => {
                         format!("{}", n)
                     },
@@ -576,7 +600,7 @@ impl Generator {
                 format!("count!({}, {})", subparser, l)
             }
             DataType::ManyCombinator { ref data_type } => {
-                let subparser = Generator::parser_for_data_type(prefix, data_type)?;
+                let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
                 format!("many0!(complete!({}))", subparser)
             }
             DataType::RestCombinator => {
@@ -601,7 +625,7 @@ impl Generator {
         Ok(match data_type {
             DataType::Value(ref v) => v.clone(),
             DataType::Array { data_type, ..} => {
-                format!("Vec<{}>", Generator::arg_type(&*data_type)?)
+                format!("&[{}]", Generator::arg_type(&*data_type)?)
             }
             _ => {
                 return Err(format!("Data type {:?} is not supported as an argument", data_type))
@@ -616,6 +640,7 @@ impl Generator {
                     helpers.insert("rest".to_string(), Function {
                         name: "rest".to_string(),
                         public: false,
+                        generics: vec![],
                         args: vec!["i: &[u8]".to_string()],
                         return_type: Some("IResult<&[u8], Vec<u8>>".to_string()),
                         body: vec![
@@ -631,6 +656,11 @@ impl Generator {
     fn render_value(value: &Value) -> String {
         match value {
             Value::String(s) => format!(r#""{}""#, s),
+            Value::ByteArray(b) => {
+                let v: Vec<String> = b.iter().map(|b|
+                    format!("{}u8", b)).collect();
+                format!("vec![{}]", v.join(", "))
+            },
             Value::Number(n) => format!("0x{:X}", n),
         }
     }
@@ -641,22 +671,27 @@ impl Generator {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
-            args: vec!["_i0: &[u8]".to_string()],
-            return_type: Some(format!("IResult<&[u8], {}>", to_camel_case(&message.name, true))),
+            generics: vec!["'a".to_string()],
+            args: vec!["_i0: &'a [u8]".to_string()],
+            return_type: Some(format!("IResult<&'a [u8], {}>", to_camel_case(&message.name, true))),
             body: vec![],
         };
+
+        let mut field_types: HashMap<String, DataType> = HashMap::new();
 
         // add arguments to the function
         for arg in &message.args {
             fun.args.push(format!("_{}: {}", arg.name, Generator::arg_type(&arg.data_type)?));
 
+            field_types.insert(arg.name.clone(), arg.data_type.clone());
+
             // if the argument has a value, we also need to add predicates at the beginning to check
             // the value matches
             if let Some(v) = &arg.value {
                 fun.body.push(
-                    format!("if _{} != {} {{
+                    format!("if {} != _{} {{
         return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));\n    }}",
-                      arg.name, Generator::render_value(v)));
+                      Generator::render_value(v), arg.name));
                 imports.insert("nom".to_string());
             }
         }
@@ -669,6 +704,8 @@ impl Generator {
         let mut output_idx = 1;
 
         for f in &message.fields {
+            field_types.insert(f.name.clone(), f.data_type.clone());
+
             if f.value.is_some() {
                 continue;
             }
@@ -727,7 +764,17 @@ impl Generator {
                     .expect("missing i/o info for field");
 
                 fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
-                                      input, Generator::parser_for_data_type(&prefix, &f.data_type)?));
+                                      input, Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?));
+
+                if let Some(ref constraints) = f.constraints {
+                    let cs: Vec<String> = constraints.iter().map(|c|
+                        format!("_{} == {}", f.name, Generator::render_expression("", c))
+                    ).collect();
+
+                    fun.body.push(format!("if !({}) {{
+      return Err(nom::Err::Error(nom::Context::Code({}, nom::ErrorKind::Tag)));
+    }}", cs.join(" || "), input));
+                }
 
                 if output != "_" {
                     final_output = output;
@@ -737,7 +784,15 @@ impl Generator {
 
         let mut construct_args: Vec<String> = message.args.iter()
             .filter(|a| a.value.is_none())
-            .map(|a| format!("_{}", a.name))
+            .map(|a| {
+                match a.data_type {
+                    // TODO: probably need to support other stuff here
+                    DataType::Array { .. } => {
+                        format!("_{}: _{}.to_vec()", a.name, a.name)
+                    }
+                    _ => format!("_{}", a.name)
+                }
+            })
             .collect();
 
         construct_args.extend(message.fields.iter()
@@ -771,6 +826,7 @@ impl Generator {
         let mut getter = Function {
             name: format!("get_{}", name),
             public: true,
+            generics: vec![],
             args: vec!["&self".to_string()],
             return_type: Some(return_type),
             body: vec![],

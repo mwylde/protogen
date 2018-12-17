@@ -10,4 +10,5 @@ fn example(name: &str) {
 
 fn main() {
     example("tcp");
+    example("wave");
 }

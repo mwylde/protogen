@@ -29,6 +29,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: false,
@@ -37,6 +38,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
+                            constraints: None
                         },
                     ],
                 }
@@ -79,6 +81,7 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
+                        constraints: None
                     }],
                 }
             ))
@@ -108,6 +111,7 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: None,
+                        constraints: None,
                     }],
                 }
             ))
@@ -192,7 +196,53 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Value("u8".to_string()),
                         value: Some(Expression::Value(Value::Number(0x22u64))),
+                        constraints: None,
                     }],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn field_constraints() {
+        let text = " hci_command =  { \
+           header: [u8; 3] | [b\"wtf\"]; \
+           public @ocf : u8 | [0x22 + 10, 5]; }";
+
+        assert_eq!(
+            message(text.as_bytes()),
+            Ok((
+                &[][..],
+                Message {
+                    name: "hci_command".to_string(),
+                    args: vec![],
+                    fields: vec![
+                        Field {
+                            public: false,
+                            variable: false,
+                            name: "header".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Array {
+                                data_type: Box::new(DataType::Value("u8".to_string())),
+                                length: ex_num(3)
+                            },
+                            value: None,
+                            constraints: Some(vec![Expression::Value(Value::ByteArray(
+                                "wtf".as_bytes().to_vec()))]),
+                        },
+                        Field {
+                            public: true,
+                            variable: true,
+                            name: "ocf".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None,
+                            constraints: Some(vec![
+                                Expression::Binop("+".to_string(),
+                                                  Box::new(ex_num(0x22)),
+                                                  Box::new(ex_num(10))),
+                                ex_num(5)]),
+                        }],
                 }
             ))
         );
@@ -216,6 +266,7 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Value("String".to_string()),
                         value: Some(Expression::Value(Value::String("hello world!".to_string()))),
+                        constraints: None,
                     }],
                 }
             ))
@@ -254,6 +305,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: Some(Expression::Value(Value::Number(0x2214))),
+                            constraints: None,
                         },
                         Field {
                             public: false,
@@ -262,6 +314,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u32".to_string()),
                             value: Some(Expression::Value(Value::Number(55))),
+                            constraints: None,
                         },
                         Field {
                             public: false,
@@ -270,6 +323,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("String".to_string()),
                             value: Some(Expression::Value(Value::String("this is a string.".to_string()))),
+                            constraints: None,
                         },
                     ],
                 }
@@ -308,6 +362,7 @@ hci_message ($name: u32) = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: true,
@@ -333,6 +388,7 @@ hci_message ($name: u32) = {
                                 },
                             ]),
                             value: None,
+                            constraints: None,
                         },
                     ],
                 }
@@ -371,6 +427,7 @@ message = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: true,
@@ -384,6 +441,7 @@ message = {
                                 ]
                             },
                             value: None,
+                            constraints: None,
                         }
                     ]
                 }))
@@ -418,6 +476,7 @@ hci_command = {
                                 length: Expression::Value(Value::Number(12)),
                             },
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: false,
@@ -426,6 +485,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: true,
@@ -437,6 +497,7 @@ hci_command = {
                                 length: ex_var("@length"),
                             },
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: false,
@@ -450,6 +511,7 @@ hci_command = {
                                                           Box::new(ex_num(2)))
                             },
                             value: None,
+                            constraints: None,
                         },
                     ],
                 }
@@ -496,6 +558,7 @@ hci_command = {
                             },
                         ]),
                         value: None,
+                        constraints: None,
                     }],
                 }
             ))
@@ -526,6 +589,7 @@ inquiry_result = {
                             args: vec![],
                         },
                         value: None,
+                        constraints: None,
                     }],
                 }
             ))
@@ -535,7 +599,7 @@ inquiry_result = {
     #[test]
     fn string_parser() {
         assert_eq!(
-            string("\"hello world\"".as_bytes()),
+            string_value("\"hello world\"".as_bytes()),
             Ok((&[][..], Value::String("hello world".to_string())))
         )
     }
@@ -626,6 +690,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u16".to_string()),
                             value: None,
+                            constraints: None,
                         },
                         Field {
                             public: true,
@@ -637,6 +702,7 @@ hci_command = {
                                 "&".to_string(),
                                 Box::new(Expression::Variable("@opcode".to_string())),
                                 Box::new(Expression::Value(Value::Number(224))))),
+                            constraints: None,
                         },
                     ],
                 }
@@ -659,14 +725,14 @@ hci_command = {
 //    }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum Expression {
     Value(Value),
     Variable(String),
     Binop(String, Box<Expression>, Box<Expression>),
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum DataType {
     Value(String),
     Array {
@@ -687,6 +753,7 @@ pub enum DataType {
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum Value {
     String(String),
+    ByteArray(Vec<u8>),
     Number(u64),
 }
 
@@ -698,15 +765,16 @@ pub struct Field {
     pub apply_to: Option<String>,
     pub data_type: DataType,
     pub value: Option<Expression>,
+    pub constraints: Option<Vec<Expression>>
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct ChooseVariant {
     pub name: String,
     pub data_type: DataType,
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Arg {
     pub public: bool,
     pub name: String,
@@ -739,13 +807,16 @@ named!(
 );
 
 
-named!(pub string<Value>,
+named!(pub string<String>,
     map!(delimited!(tag!("\""),
         map_res!(
             // escaped!(call!(is_string_char), '\\', one_of!("\"n\\")),
             take_while!(is_string_char),
             str::from_utf8),
-        tag!("\"")), |s| Value::String(s.to_string())));
+        tag!("\"")), |s| s.to_string()));
+
+named!(pub string_value<Value>,
+    map!(string, |s| Value::String(s)));
 
 fn convert_hex(bytes: &[u8]) -> u64 {
     bytes
@@ -797,6 +868,12 @@ named!(
     map!(number, Value::Number));
 
 named!(
+    byte_array_value<Value>,
+    do_parse!(
+      tag!("b") >> string: string >> ( Value::ByteArray(string.as_bytes().to_vec()))
+    ));
+
+named!(
     variable<String>,
     do_parse!(
         sigil: map_res!(alt!(tag!("@") | tag!("$")), str::from_utf8)
@@ -804,7 +881,7 @@ named!(
             >> ([sigil, name].join("").to_string())
     ));
 
-named!(value<Value>, alt!(string | number_value));
+named!(value<Value>, alt!(byte_array_value | string_value | number_value));
 
 named!(
     message_type<DataType>,
@@ -916,6 +993,14 @@ named!(
     ws!(do_parse!(_equals: tag!("=") >> value: expression >> (value))));
 
 named!(
+    constraints<Vec<Expression>>,
+    ws!(do_parse!(
+      tag!("|") >>
+      tag!("[") >>
+      cs: separated_nonempty_list!(tag!(","), expression) >>
+      tag!("]") >> ( cs ))));
+
+named!(
     assign_value<Value>,
     ws!(do_parse!(_equals: tag!("=") >> value: value >> (value))));
 
@@ -930,6 +1015,7 @@ named!(
             >> apply_to: opt!(complete!(apply))
             >> data_type: data_type
             >> value: opt!(assign_expression)
+            >> constraints: opt!(constraints)
             >> _semicolon: tag!(";") >> (Field {
             public: public.is_some(),
             variable: variable.is_some(),
@@ -937,6 +1023,7 @@ named!(
             apply_to,
             data_type,
             value,
+            constraints: constraints,
         })
     ))
 );
@@ -952,12 +1039,12 @@ named!(
                     >> _sigil: tag!("$")
                     >> name: symbol
                     >> _colon: tag!(":")
-                    >> type_name: symbol
+                    >> data_type: data_type
                     >> value: opt!(assign_value) >> (Arg {
                     public: public.is_some(),
                     name: name.to_string(),
-                    data_type: DataType::Value(type_name.to_string()),
-                    value: value,
+                    data_type,
+                    value,
                 })
             )
         ),

@@ -6,9 +6,6 @@ license = "Apache-2.0/MIT"
 build = "build.rs"
 publish = false
 
-[dependencies]
-hex = "^0.3.2"
-
 [dependencies.nom]
 version = "^4.1"
 features = ["verbose-errors"]
