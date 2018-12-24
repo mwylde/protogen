@@ -150,6 +150,20 @@ impl HciCommand {
         Ok((_i3, HciCommand { _type, _public_arg, _ocf, _length, _message }))
     }
 
+    fn write_bytes(&self, buf: &mut Vec<u8>) {
+        buf.push(self._ocf);
+        buf.push(self._length);
+        match &self._message {
+            HciCommand_Message::SomeMessage(v) => v.write_bytes(buf),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut buf = vec![];
+        self.write_bytes(&mut buf);
+        buf
+    }
+
 }
 
 
@@ -781,6 +795,80 @@ impl Generator {
         Ok(fun)
     }
 
+    fn writer_for_field(message: &Message, field_name: &str, var: &str, data_type: &DataType) -> String {
+        let vref = format!("{}{}",
+                           if Generator::use_ref(data_type) { "&" } else { "" },
+                           var);
+
+        match data_type {
+            DataType::Value(ref v) => {
+                match v.as_ref() {
+                    "u8" => format!("buf.push({});", vref),
+                    "i8" => format!("protogen::write_i8(buf, {});", vref),
+                    w @ "u16" | w @ "u32" | w @ "u64" | w @ "i16" | w @ "i32" | w @ "i64"  =>
+                        format!("protogen::write_{}_le(buf, {});", w, vref),
+                    "cstring" => format!("buf.extend_from_slice({});", vref),
+                    _ => "unimplemented!();".to_string(),
+                }
+            }
+            DataType::Array { data_type, .. } => {
+                match data_type.as_ref() {
+                    DataType::Value(v) if *v == "u8" => format!("buf.extend_from_slice({});", vref),
+                    dt => {
+                        format!("for v in {} {{ {} }}", vref,
+                                Generator::writer_for_field(message, field_name, "*v", dt))
+                    }
+                }
+            },
+            DataType::Message { name: ref m, ..} if m == "str_utf8" => {
+                format!("buf.extend_from_slice({}.as_bytes());", var)
+            }
+            DataType::Message { .. } => {
+                format!("({}).write_bytes(buf);", var)
+            }
+            DataType::ManyCombinator { data_type } => {
+                Generator::writer_for_field(message, field_name, var,
+                                            &DataType::Array {
+                                                data_type: data_type.clone(),
+                                                length: Expression::Value(Value::Number(0)) })
+            }
+            DataType::RestCombinator => format!("buf.extend_from_slice({});", vref),
+            DataType::Choose(variants) => {
+                let matches: Vec<String> = variants.iter().map(|var| {
+                    format!("        {}_{}::{}(v) => v.write_bytes(buf),",
+                            to_camel_case(&message.name, true),
+                            to_camel_case(&field_name, true),
+                            var.name)
+                }).collect();
+
+                format!("match {} {{\n{}\n    }}", vref, matches.join("\n"))
+            }
+        }
+    }
+
+    fn write_bytes_fn(message: &Message) -> Function {
+        let mut body = vec![];
+
+        for field in &message.fields {
+            if field.value.is_none() && field.apply_to.is_none() {
+                let name = format!("self._{}", field.name);
+                body.push(Generator::writer_for_field(
+                    message, &field.name, &name, &field.data_type));
+            }
+        }
+
+        let buf_name = if body.is_empty() { "_buf" } else { "buf" };
+
+        Function {
+            name: "write_bytes".to_string(),
+            public: false,
+            generics: vec![],
+            args: vec!["&self".to_string(), format!("{}: &mut Vec<u8>", buf_name)],
+            return_type: None,
+            body
+        }
+    }
+
     fn add_field(public: bool, name: &str, data_type: &DataType,
                  value: Option<&Expression>, st: &mut Struct, imp: &mut Impl, enums: &mut Vec<Enum>) {
         let prefix = &[&st.name[..], &to_camel_case(name, true)].join("_");
@@ -860,6 +948,21 @@ impl Generator {
             }
 
             imp.functions.push(Generator::parse_fn(&message, &mut imports)?);
+
+            imp.functions.push(Generator::write_bytes_fn(&message));
+
+            imp.functions.push(Function {
+                name: "to_vec".to_string(),
+                public: true,
+                generics: vec![],
+                args: vec!["&self".to_string()],
+                return_type: Some("Vec<u8>".to_string()),
+                body: vec![
+                    "let mut buf = vec![];".to_string(),
+                    "self.write_bytes(&mut buf);".to_string(),
+                    "buf".to_string()
+                ]
+            });
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
