@@ -459,7 +459,6 @@ impl fmt::Display for Impl {
 }
 
 pub struct Generator {
-    helpers: HashMap<String, Function>,
     messages: Vec<Message>,
     imports: HashSet<String>,
     structs: HashMap<String, Struct>,
@@ -604,7 +603,7 @@ impl Generator {
                 format!("many0!(complete!({}))", subparser)
             }
             DataType::RestCombinator => {
-                "rest".to_string()
+                "protogen::rest".to_string()
             }
         })
     }
@@ -633,26 +632,6 @@ impl Generator {
         })
     }
 
-    fn add_helper(data_type: &DataType, helpers: &mut HashMap<String, Function>) {
-        match data_type {
-            DataType::RestCombinator => {
-                if !helpers.contains_key("rest") {
-                    helpers.insert("rest".to_string(), Function {
-                        name: "rest".to_string(),
-                        public: false,
-                        generics: vec![],
-                        args: vec!["i: &[u8]".to_string()],
-                        return_type: Some("IResult<&[u8], Vec<u8>>".to_string()),
-                        body: vec![
-                            "Ok((&[][..], i.to_vec()))".to_string()
-                        ]
-                    });
-                }
-            }
-            _ => {}
-        }
-    }
-
     fn render_value(value: &Value) -> String {
         match value {
             Value::String(s) => format!(r#""{}""#, s),
@@ -666,7 +645,6 @@ impl Generator {
     }
 
     fn parse_fn(message: &Message,
-                helpers: &mut HashMap<String, Function>,
                 imports: &mut HashSet<String>) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
@@ -747,8 +725,6 @@ impl Generator {
             if io.insert(&f.name[..], v).is_some() {
                 return Err(format!("duplicate field {} in {}", f.name, message.name));
             }
-
-            Generator::add_helper(&f.data_type, helpers);
         };
 
         let mut final_output = "_i0";
@@ -854,7 +830,6 @@ impl Generator {
     }
 
     pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
-        let mut helpers = HashMap::new();
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
@@ -884,7 +859,7 @@ impl Generator {
                                      &mut s, &mut imp, &mut enums);
             }
 
-            imp.functions.push(Generator::parse_fn(&message, &mut helpers, &mut imports)?);
+            imp.functions.push(Generator::parse_fn(&message, &mut imports)?);
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
@@ -907,7 +882,6 @@ impl Generator {
         }
 
         Ok(Generator {
-            helpers,
             messages,
             imports,
             structs,
@@ -926,14 +900,6 @@ impl fmt::Display for Generator {
         }
 
         write!(f, "\n")?;
-
-        for helper in &self.helpers {
-            write!(f, "{}\n", helper.1)?;
-        }
-
-        if !self.helpers.is_empty() {
-            write!(f, "\n")?;
-        }
 
         for message in &self.messages {
             let name = to_camel_case(&message.name, true);

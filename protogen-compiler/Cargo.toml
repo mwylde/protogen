@@ -1,0 +1,8 @@
+[package]
+name = "protogen-compiler"
+version = "0.1.0"
+authors = ["Micah Wylde <micah@micahw.com>"]
+
+[dependencies.nom]
+version = "^4.1"
+features = ["verbose-errors"]

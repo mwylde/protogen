@@ -6,9 +6,13 @@ license = "Apache-2.0/MIT"
 build = "build.rs"
 publish = false
 
+[dependencies]
+bytes = "0.4"
+protogen = { path = "../protogen" }
+
 [dependencies.nom]
 version = "^4.1"
 features = ["verbose-errors"]
 
-[build-dependencies.protogen]
-path = ".."
+[build-dependencies.protogen-compiler]
+path = "../protogen-compiler"
