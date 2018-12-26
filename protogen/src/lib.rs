@@ -45,9 +45,9 @@ mod tests {
     fn read_u8() {
         let buf = vec![100u8, 200u8];
         let state = State::from_slice(&buf);
-        let (state, x) = read_u8_le(&state).unwrap();
-        let (state, y) = read_u8_le(&state).unwrap();
-        let err = read_u8_le(&state);
+        let (state, x) = read_u8_le(state).unwrap();
+        let (state, y) = read_u8_le(state).unwrap();
+        let err = read_u8_le(state);
         assert_eq!(100, x);
         assert_eq!(200, y);
         assert_eq!(Err(Error {
@@ -61,9 +61,9 @@ mod tests {
             bit_offset: 4
         };
 
-        let (state, x) = read_u8_le(&state).unwrap();
+        let (state, x) = read_u8_le(state).unwrap();
         assert_eq!(76, x);
-        assert_eq!(8, state.offset);
+        assert_eq!(1, state.offset);
         assert_eq!(4, state.bit_offset);
     }
 
@@ -71,10 +71,10 @@ mod tests {
     fn test_read_bits_u8() {
         let buf = vec![100u8, 200u8];
         let state = State::from_slice(&buf);
-        let (state, x) = read_bits_u8(&state, 4).unwrap();
-        let (state, y) = read_bits_u8(&state, 6).unwrap();
-        let (state, z) = read_bits_u8(&state, 6).unwrap();
-        let err = read_bits_u8(&state, 1);
+        let (state, x) = read_bits_u8(state, 4).unwrap();
+        let (state, y) = read_bits_u8(state, 6).unwrap();
+        let (state, z) = read_bits_u8(state, 6).unwrap();
+        let err = read_bits_u8(state, 1);
         assert_eq!(6, x);
         assert_eq!(19, y);
         assert_eq!(8, z);
@@ -88,8 +88,8 @@ mod tests {
     fn read_u16() {
         let buf = vec![3u8, 170u8];
         let state = State::from_slice(&buf);
-        let (state, x) = read_u16_le(&state).unwrap();
-        let err = read_u16_le(&state);
+        let (state, x) = read_u16_le(state).unwrap();
+        let err = read_u16_le(state);
         assert_eq!(43523, x);
         assert_eq!(Err(Error {
             error: ErrorType::Incomplete(16),
@@ -103,9 +103,34 @@ mod tests {
             bit_offset: 4
         };
 
-        let (state, x) = read_u16_le(&state).unwrap();
+        let (state, x) = read_u16_le(state).unwrap();
         assert_eq!(49238, x);
         assert_eq!(2, state.offset);
+        assert_eq!(4, state.bit_offset);
+    }
+
+    #[test]
+    fn read_u32() {
+        let buf = vec![226u8, 41, 8, 223];
+        let state = State::from_slice(&buf);
+        let (state, x) = read_u32_le(state).unwrap();
+        let err = read_u32_le(state);
+        assert_eq!(3741854178, x);
+        assert_eq!(Err(Error {
+            error: ErrorType::Incomplete(32),
+            position: 32,
+        }), err);
+
+        let buf = vec![109u8, 169, 171, 169, 215];
+        let state = State {
+            data: &buf,
+            offset: 0,
+            bit_offset: 4
+        };
+
+        let (state, x) = read_u32_le(state).unwrap();
+        assert_eq!(2646252250, x);
+        assert_eq!(4, state.offset);
         assert_eq!(4, state.bit_offset);
     }
 }
@@ -166,7 +191,7 @@ pub struct Error {
     position: usize
 }
 
-#[derive(Debug, PartialOrd, PartialEq)]
+#[derive(Debug, PartialOrd, PartialEq, Copy, Clone)]
 pub struct State<'a> {
     data: &'a [u8],
     offset: usize,
@@ -183,7 +208,7 @@ impl <'a> State<'a> {
     }
 }
 
-fn expect(state: &State, num_bits: usize) -> Result<(), Error> {
+fn expect(state: State, num_bits: usize) -> Result<(), Error> {
     let diff = num_bits as i64 - ((state.data.len() as i64 - state.offset as i64) * 8 -
         state.bit_offset as i64);
     if diff > 0 {
@@ -196,22 +221,10 @@ fn expect(state: &State, num_bits: usize) -> Result<(), Error> {
 
 type PResult<T> = Result<T, Error>;
 
-//fn read_bits(state: State, num_bits: u64) -> PResult<(State, Vec<u8>)> {
-//    expect(state, num_bits)?;
-//
-//    if state.bit_offset == 0 {
-//
-//    } else {
-//        unimplemented!();
-//    }
-//
-//}
-
-
 #[macro_export(local_innner_macros)]
 macro_rules! read_bits_width (
   ($name:ident, $t:ty) => (
-  pub fn $name<'a>(state: &'a State, num_bits: usize) -> PResult<(State<'a>, $t)> {
+  pub fn $name(state: State, num_bits: usize) -> PResult<(State, $t)> {
     expect(state, num_bits)?;
     let mut acc: $t = 0u8.into();
     let mut bit_offset = state.bit_offset;
@@ -252,7 +265,11 @@ macro_rules! read_bits_width (
 ));
 
 read_bits_width!(read_bits_u8, u8);
-pub fn read_u8_le<'a>(state: &'a State) -> PResult<(State<'a>, u8)> {
+read_bits_width!(read_bits_u16, u16);
+read_bits_width!(read_bits_u32, u32);
+read_bits_width!(read_bits_u64, u64);
+
+pub fn read_u8_le(state: State) -> PResult<(State, u8)> {
     expect(state, 8)?;
     if state.bit_offset == 0 {
         Ok((State {
@@ -265,8 +282,8 @@ pub fn read_u8_le<'a>(state: &'a State) -> PResult<(State<'a>, u8)> {
     }
 }
 
-read_bits_width!(read_bits_u16, u16);
-pub fn read_u16_le<'a>(state: &'a State) -> PResult<(State<'a>, u16)> {
+
+pub fn read_u16_le(state: State) -> PResult<(State, u16)> {
     expect(state, 16)?;
     if state.bit_offset == 0 {
         let v = ((state.data[state.offset + 1] as u16) << 8) + state.data[state.offset] as u16;
@@ -276,15 +293,63 @@ pub fn read_u16_le<'a>(state: &'a State) -> PResult<(State<'a>, u16)> {
             bit_offset: 0,
         }, v))
     } else {
-        let (s1, b2) = read_bits_u8(state, 8)?;
-        let (s2, b1) = read_bits_u8(&s1, 8)?;
+        let (state, b2) = read_bits_u8(state, 8)?;
+        let (state, b1) = read_bits_u8(state, 8)?;
         Ok((State {
             data: &state.data,
-            offset: s2.offset,
-            bit_offset: s2.bit_offset
+            offset: state.offset,
+            bit_offset: state.bit_offset
         }, ((b1 as u16) << 8) + b2 as u16))
     }
 }
 
-read_bits_width!(read_bits_u32, u32);
-read_bits_width!(read_bits_u64, u64);
+pub fn read_u32_le(s: State) -> PResult<(State, u32)> {
+    expect(s, 32)?;
+    if s.bit_offset == 0 {
+        let v = ((s.data[s.offset + 3] as u32) << 24) +
+            ((s.data[s.offset + 2] as u32) << 16) +
+            ((s.data[s.offset + 1] as u32) << 8) +
+            s.data[s.offset] as u32;
+        Ok((State {
+            data: &s.data,
+            offset: s.offset + 4,
+            bit_offset: 0,
+        }, v))
+    } else {
+        let (s, b4) = read_bits_u8(s, 8)?;
+        let (s, b3) = read_bits_u8(s, 8)?;
+        let (s, b2) = read_bits_u8(s, 8)?;
+        let (s, b1) = read_bits_u8(s, 8)?;
+        Ok((State {
+            data: &s.data,
+            offset: s.offset,
+            bit_offset: s.bit_offset
+        }, (((b1 as u32) << 24) +
+            ((b2 as u32) << 16) +
+            ((b3 as u32) << 8) +
+            b4 as u32)))
+    }
+}
+
+pub fn read_bytes(state: State, n: usize) -> PResult<(State, Vec<u8>)> {
+    expect(state, n * 8)?;
+
+    if state.bit_offset == 0 {
+        Ok((State {
+            data: &state.data,
+            offset: state.offset + n,
+            bit_offset: 0,
+        }, state.data[state.offset..state.offset + n].to_vec()))
+    } else {
+        let mut v = Vec::with_capacity(n);
+
+        let mut s = state;
+        for _ in 0..n {
+            let (s1, b) = read_bits_u8(s, 8)?;
+            s = s1;
+            v.push(b);
+        }
+
+        Ok((s, v))
+    }
+}
