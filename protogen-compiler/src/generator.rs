@@ -11,12 +11,39 @@ mod tests {
     use super::*;
     use parser::{ChooseVariant, Expression, Field, Value};
     use parser::Arg;
+    use nom::*;
 
     #[test]
     fn test_to_camel_case() {
         assert_eq!("ThisIsMyWord", to_camel_case("this_is_my_word", true));
         assert_eq!("thisIsMyWord", to_camel_case("this_is_my_word", false));
     }
+
+//    #[test]
+//    fn bitstream() {
+//        let b: [u8; 4] = [0b10100011, 0b11100110, 0b01101101, 10];
+//
+//        fn parser(i0: &[u8]) -> IResult<&[u8], ()> {
+////            let (_i, x) = try_parse!(i0, bits!(take_bits!(u8, 3)));
+////            println!("Parsed {:#b} ({:?})", x, _i);
+////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 6)));
+////            println!("Parsed {:#b} ({:?})", x, _i);
+////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 7)));
+////            println!("Parsed {:#b} ({:?})", x, _i);
+//
+//            let (_i, (x, y, z)) = do_parse!(i0,
+//              bits!(
+//
+//              ))
+//
+//            let (_i, x) = try_parse!(_i, le_u8);
+//            println!("Parsed {} ({:?})", x, _i);
+//
+//            Ok((_i, ()))
+//        }
+//
+//        parser(&b[..]).unwrap();
+//    }
 
     #[test]
     fn test_data_type() {
