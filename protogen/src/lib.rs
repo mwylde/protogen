@@ -135,6 +135,31 @@ mod tests {
     }
 
     #[test]
+    fn read_u64() {
+        let buf = vec![136u8, 79, 185, 252, 210, 65, 5, 35];
+        let state = State::from_slice(&buf);
+        let (state, x) = read_u64_le(state).unwrap();
+        let err = read_u64_le(state);
+        assert_eq!(2523495540649971592, x);
+        assert_eq!(Err(Error {
+            error: ErrorType::Incomplete(64),
+            position: 64,
+        }), err);
+
+        let buf = vec![202u8, 136, 79, 185, 252, 210, 65, 5, 35];
+        let state = State {
+            data: &buf,
+            offset: 0,
+            bit_offset: 4
+        };
+
+        let (state, x) = read_u64_le(state).unwrap();
+        assert_eq!(5913266776308417704, x);
+        assert_eq!(8, state.offset);
+        assert_eq!(4, state.bit_offset);
+    }
+
+    #[test]
     fn test_bytes() {
         let buf = vec![171u8, 57, 63, 220];
         let state = State::from_slice(&buf);
@@ -166,7 +191,8 @@ mod tests {
         let buf = "hello".as_bytes();
         let state = State::from_slice(buf);
 
-        let (state, _) = tag(state, "hel".as_bytes()).unwrap();
+        let (state, v) = tag(state, "hel".as_bytes()).unwrap();
+        assert_eq!("hel".as_bytes(), v);
 
         let err = tag(state, "loo".as_bytes());
         assert_eq!(Err(Error {
@@ -194,7 +220,10 @@ mod tests {
 
     #[test]
     fn test_choose() {
-
+        let buf = "abc".as_bytes();
+        let state = State::from_slice(buf);
+        let (_state, v) = choose!(state, tag("xyza".as_bytes()) | tag("ab".as_bytes())).unwrap();
+        assert_eq!("ab".as_bytes(), v);
     }
 }
 
@@ -344,6 +373,9 @@ pub fn read_u8_le(state: State) -> PResult<(State, u8)> {
     }
 }
 
+pub fn read_i8_le(state: State) -> PResult<(State, i8)> {
+    read_u8_le(state).map(|(s, i)| (s, i as i8))
+}
 
 pub fn read_u16_le(state: State) -> PResult<(State, u16)> {
     expect(state, 16)?;
@@ -363,6 +395,10 @@ pub fn read_u16_le(state: State) -> PResult<(State, u16)> {
             bit_offset: state.bit_offset
         }, ((b1 as u16) << 8) + b2 as u16))
     }
+}
+
+pub fn read_i16_le(state: State) -> PResult<(State, i16)> {
+    read_u8_le(state).map(|(s, i)| (s, i as i16))
 }
 
 pub fn read_u32_le(s: State) -> PResult<(State, u32)> {
@@ -392,6 +428,55 @@ pub fn read_u32_le(s: State) -> PResult<(State, u32)> {
             b4 as u32)))
     }
 }
+
+pub fn read_i32_le(state: State) -> PResult<(State, i32)> {
+    read_u8_le(state).map(|(s, i)| (s, i as i32))
+}
+
+pub fn read_u64_le(s: State) -> PResult<(State, u64)> {
+    expect(s, 64)?;
+    if s.bit_offset == 0 {
+        let v = ((s.data[s.offset + 7] as u64) << 56) +
+            ((s.data[s.offset + 6] as u64) << 48) +
+            ((s.data[s.offset + 5] as u64) << 40) +
+            ((s.data[s.offset + 4] as u64) << 32) +
+            ((s.data[s.offset + 3] as u64) << 24) +
+            ((s.data[s.offset + 2] as u64) << 16) +
+            ((s.data[s.offset + 1] as u64) << 8) +
+            s.data[s.offset] as u64;
+        Ok((State {
+            data: &s.data,
+            offset: s.offset + 8,
+            bit_offset: 0,
+        }, v))
+    } else {
+        let (s, b8) = read_bits_u8(s, 8)?;
+        let (s, b7) = read_bits_u8(s, 8)?;
+        let (s, b6) = read_bits_u8(s, 8)?;
+        let (s, b5) = read_bits_u8(s, 8)?;
+        let (s, b4) = read_bits_u8(s, 8)?;
+        let (s, b3) = read_bits_u8(s, 8)?;
+        let (s, b2) = read_bits_u8(s, 8)?;
+        let (s, b1) = read_bits_u8(s, 8)?;
+        Ok((State {
+            data: &s.data,
+            offset: s.offset,
+            bit_offset: s.bit_offset
+        }, (((b1 as u64) << 56) +
+            ((b2 as u64) << 48) +
+            ((b3 as u64) << 40) +
+            ((b4 as u64) << 32) +
+            ((b5 as u64) << 24) +
+            ((b6 as u64) << 16) +
+            ((b7 as u64) << 8) +
+            b8 as u64)))
+    }
+}
+
+pub fn read_i64_le(state: State) -> PResult<(State, i64)> {
+    read_u8_le(state).map(|(s, i)| (s, i as i64))
+}
+
 
 pub fn read_bytes(state: State, n: usize) -> PResult<(State, Vec<u8>)> {
     expect(state, n * 8)?;
@@ -424,11 +509,11 @@ fn fail(state: State) -> Error {
     }
 }
 
-pub fn tag<'a>(state: State<'a>, tag: &[u8]) -> PResult<(State<'a>, ())> {
+pub fn tag<'a, 'b>(state: State<'a>, tag: &'b [u8]) -> PResult<(State<'a>, &'b [u8])> {
     let (s2, bytes) = read_bytes(state, tag.len())?;
 
     if bytes == tag {
-       Ok((s2, ()))
+       Ok((s2, tag))
     } else {
         Err(fail(state))
     }
@@ -473,9 +558,33 @@ macro_rules! many (
     }
 ));
 
-//#[macro_export(local_inner_macros)]
-//macro_rules! choose (
-//($state: expr, $)
+#[macro_export(local_inner_macros)]
+macro_rules! choose (
+($state: expr, $subrule:ident( $($args:tt)*) | $($rest:tt)*) => (
+  {
+    let res = $subrule($state, $($args)*);
+    match res {
+      Ok(_) => res,
+      Err(_) => choose!($state, $($rest)*),
+    }
+  }
+);
+
+($state: expr, $subrule:ident( $($args:tt)*)) => (
+  {
+    let res = $subrule($state, $($args)*);
+    match res {
+      Ok(_) => res,
+      Err(_) => Err($crate::Error {
+          error: $crate::ErrorType::Failure,
+          position: $state.offset * 8 + $state.bit_offset
+      }),
+    }
+  }
+)
+);
+
+
 //pub fn choose<'a, T>(state: State<'a>, parsers: [Parser<T>; 2]) -> PResult<(State<'a>, T)> {
 //    for parser in &parsers {
 //        match parser(state) {
