@@ -133,6 +133,69 @@ mod tests {
         assert_eq!(4, state.offset);
         assert_eq!(4, state.bit_offset);
     }
+
+    #[test]
+    fn test_bytes() {
+        let buf = vec![171u8, 57, 63, 220];
+        let state = State::from_slice(&buf);
+
+        let (state, x) = read_bytes(state, 2).unwrap();
+        assert_eq!(vec![171u8, 57], x);
+
+        let (state, x) = read_bytes(state, 2).unwrap();
+        assert_eq!(vec![63u8, 220], x);
+
+        let err = read_bytes(state, 1);
+        assert_eq!(Err(Error {
+            error: ErrorType::Incomplete(8),
+            position: 32,
+        }), err);
+
+        let state = State {
+            data: &buf,
+            offset: 0,
+            bit_offset: 5
+        };
+
+        let (_, x) = read_bytes(state, 2).unwrap();
+        assert_eq!(vec![103, 39], x);
+    }
+
+    #[test]
+    fn test_tag() {
+        let buf = "hello".as_bytes();
+        let state = State::from_slice(buf);
+
+        let (state, _) = tag(state, "hel".as_bytes()).unwrap();
+
+        let err = tag(state, "loo".as_bytes());
+        assert_eq!(Err(Error {
+            error: ErrorType::Incomplete(8),
+            position: 24,
+        }), err);
+
+        let err = tag(state, "er".as_bytes());
+        assert_eq!(Err(Error {
+            error: ErrorType::Failure,
+            position: 24,
+        }), err);
+    }
+
+
+    #[test]
+    fn test_many() {
+        let buf = "buffalobuffalobuffaloxx".as_bytes();
+        let state = State::from_slice(buf);
+        let (state, v) = many!(state, None, None, tag("buffalo".as_bytes())).unwrap();
+        assert_eq!(3, v.len());
+        assert_eq!(21, state.offset);
+        assert_eq!(0, state.bit_offset);
+    }
+
+    #[test]
+    fn test_choose() {
+
+    }
 }
 
 
@@ -221,7 +284,6 @@ fn expect(state: State, num_bits: usize) -> Result<(), Error> {
 
 type PResult<T> = Result<T, Error>;
 
-#[macro_export(local_innner_macros)]
 macro_rules! read_bits_width (
   ($name:ident, $t:ty) => (
   pub fn $name(state: State, num_bits: usize) -> PResult<(State, $t)> {
@@ -353,3 +415,75 @@ pub fn read_bytes(state: State, n: usize) -> PResult<(State, Vec<u8>)> {
         Ok((s, v))
     }
 }
+
+#[inline]
+fn fail(state: State) -> Error {
+    Error {
+        error: ErrorType::Failure,
+        position: state.offset * 8 + state.bit_offset
+    }
+}
+
+pub fn tag<'a>(state: State<'a>, tag: &[u8]) -> PResult<(State<'a>, ())> {
+    let (s2, bytes) = read_bytes(state, tag.len())?;
+
+    if bytes == tag {
+       Ok((s2, ()))
+    } else {
+        Err(fail(state))
+    }
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! many (
+($state: expr, $max: expr, $min: expr, $parser:ident( $($args:tt)* )) => (
+    {
+        let min: std::option::Option<usize> = $min;
+        let max: std::option::Option<usize> = $max;
+        let mut v = std::vec![];
+        let mut _s = $state;
+        let mut error: std::option::Option<$crate::Error> = None;
+        loop {
+            match $parser(_s, $($args)*) {
+                Ok((s1, x)) => {
+                    if s1.offset == $state.offset && s1.bit_offset == $state.bit_offset {
+                      break;
+                    }
+                    _s = s1;
+                    v.push(x);
+                    if max.is_some() && v.len() > max.unwrap() {
+                       error = Some(fail($state));
+                       break;
+                    }
+                }
+                Err(err) => {
+                    if min.is_some() && v.len() < min.unwrap() {
+                        error = Some(err);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if error.is_none() {
+          Ok((_s, v))
+        } else {
+          Err(error.unwrap())
+        }
+    }
+));
+
+//#[macro_export(local_inner_macros)]
+//macro_rules! choose (
+//($state: expr, $)
+//pub fn choose<'a, T>(state: State<'a>, parsers: [Parser<T>; 2]) -> PResult<(State<'a>, T)> {
+//    for parser in &parsers {
+//        match parser(state) {
+//            Ok(r) => return Ok(r),
+//            Err( Error { error: ErrorType::Incomplete(i), position } ) =>
+//                return Err(Error { error: ErrorType::Incomplete(i), position }),
+//            _ => (),
+//        }
+//    };
+//    Err(fail(state))
+//}
