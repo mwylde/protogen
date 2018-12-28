@@ -5,6 +5,8 @@ use parser::Expression;
 use parser::Value;
 use parser::Field;
 use std::collections::HashSet;
+use regex::Regex;
+use std::str::FromStr;
 
 #[cfg(test)]
 mod tests {
@@ -510,7 +512,13 @@ impl Generator {
     fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
             DataType::Value(v) if v == "cstring" => "String".to_string(),
-            DataType::Value(v)  => v.clone(),
+            DataType::Value(v)  => {
+                if let Ok((sign, _, width)) = Generator::parse_int_type(v) {
+                    format!("{}{}", sign, width)
+                } else {
+                    v.clone()
+                }
+            },
             DataType::Array { ref data_type, .. } => format!(
                 "Vec<{}>",
                 Generator::render_data_type(prefix, enums, &*data_type)
@@ -540,6 +548,29 @@ impl Generator {
                 enums.push(e);
                 prefix.to_string()
             }
+        }
+    }
+
+    fn parse_int_type(s: &str) -> Result<(String, usize, usize), String> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"([iu])(\d{1,2})").unwrap();
+        }
+
+        if let Some(captures) = RE.captures(s) {
+            let size = usize::from_str(&captures[2]).unwrap();
+            if size == 0 {
+                return Err(format!("Bit size cannot be 0{}", size));
+            }
+
+            let width = if size <= 8 { 8 }
+                else if size <= 16 { 16 }
+                    else if size <= 32 { 32 }
+                        else if size <= 64 { 64 }
+                            else {  return Err(format!("Unsupported bit size {}", size)) };
+
+            Ok((captures[1].to_string(), size, width))
+        } else {
+            return Err(format!("Unknown type {}", s))
         }
     }
 
@@ -573,7 +604,17 @@ impl Generator {
                     "i32" => "read_i32_le".to_string(),
                     "i64" => "read_i64_le".to_string(),
                     "cstring" => "map_res!(many!(call!(not, 0)), |v| String::from_utf8(v))".to_string(),
-                    t => return Err(format!("Unknown type {} in {}", t, prefix)),
+                    t => {
+                        let (sign, size, width) = Generator::parse_int_type(t)?;
+
+                        let parser = format!("call!(read_bits_u{}, {})", width, size);
+
+                        if sign == "u" {
+                            parser
+                        } else {
+                            format!("map!({}, |x| x as i{})", parser, width)
+                        }
+                    },
                 }
             },
             DataType::Message { ref name, ref args} if name == "str_utf8" => {
@@ -653,7 +694,7 @@ impl Generator {
             DataType::Value(ref v) => {
                 match v.as_ref() {
                     "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => false,
-                    _ => true
+                    v => Generator::parse_int_type(v).is_err()
                 }
             }
             _ => true
