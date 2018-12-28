@@ -581,7 +581,7 @@ impl Generator {
                     return Err(format!("Expected one argument to str_utf8, found {}", args.len()));
                 }
 
-                format!("map_res!(call!(read_bytes, {}), |v| String::from_utf8(v))",
+                format!("map_res!(call!(read_bytes, {} as usize), |v| String::from_utf8(v))",
                         Generator::render_expression("", &args.get(0).unwrap()))
             },
             DataType::Message { ref name, ref args } => {
@@ -600,7 +600,7 @@ impl Generator {
                             expr
                         }
                     }).collect();
-                    format!("{}::parse({})", fun, args.join(", "))
+                    format!("call!({}::parse, {})", fun, args.join(", "))
                 }
             },
             DataType::Choose(ref variants) => {
@@ -643,7 +643,7 @@ impl Generator {
                 format!("many!(call!({}))", subparser)
             }
             DataType::RestCombinator => {
-                "rest()".to_string()
+                "rest".to_string()
             }
         })
     }
@@ -684,13 +684,12 @@ impl Generator {
         }
     }
 
-    fn parse_fn(message: &Message,
-                imports: &mut HashSet<String>) -> Result<Function, String> {
+    fn parse_fn(message: &Message) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
             public: true,
             generics: vec!["'a".to_string()],
-            args: vec!["_i0: State<'a>".to_string()],
+            args: vec!["_s0: State<'a>".to_string()],
             return_type: Some(format!("PResult<(State<'a>, {})>", to_camel_case(&message.name, true))),
             body: vec![],
         };
@@ -708,9 +707,8 @@ impl Generator {
             if let Some(v) = &arg.value {
                 fun.body.push(
                     format!("if {} != _{} {{
-        return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));\n    }}",
+        return Err(protogen::Error {{ error: protogen::ErrorType::Failure, position: _s0.offset * 8 + _s0.bit_offset }});\n    }}",
                       Generator::render_value(v), arg.name));
-                imports.insert("nom".to_string());
             }
         }
 
@@ -742,7 +740,7 @@ impl Generator {
                                _ => unimplemented!()
                            };
 
-                           (format!("&{}[..{} as usize]", i, l), "_".to_string(), f)
+                           (format!("{}.range_to(..{} as usize)", i, l), "_".to_string(), f)
                        } else {
                            return Err(format!("Stream source {} for {} in {} is not a byte array",
                                               target, f.name, message.name));
@@ -756,7 +754,7 @@ impl Generator {
                                        target, f.name, message.name));
                 }
             } else {
-                let v = (format!("_i{}", input_idx), format!("_i{}", output_idx), f);
+                let v = (format!("_s{}", input_idx), format!("_s{}", output_idx), f);
                 input_idx += 1;
                 output_idx += 1;
                 v
@@ -767,7 +765,7 @@ impl Generator {
             }
         };
 
-        let mut final_output = "_i0";
+        let mut final_output = "_s0";
         for f in &message.fields {
             let prefix = [&message_type[..], &to_camel_case(&f.name, true)].join("_");
 
@@ -788,8 +786,8 @@ impl Generator {
                     ).collect();
 
                     fun.body.push(format!("if !({}) {{
-      return Err(nom::Err::Error(nom::Context::Code({}, nom::ErrorKind::Tag)));
-    }}", cs.join(" || "), input));
+      return Err(protogen::Error {{ error: protogen::ErrorType::Failure, position: {}.offset * 8 + {}.bit_offset }})
+    }}", cs.join(" || "), input, input));
                 }
 
                 if output != "_" {
@@ -947,7 +945,7 @@ impl Generator {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
-        let mut imports: HashSet<String> = ["protogen::*".to_string()]
+        let imports: HashSet<String> = ["protogen::*".to_string()]
             .iter().cloned().collect();
 
         for message in &messages {
@@ -973,7 +971,7 @@ impl Generator {
                                      &mut s, &mut imp, &mut enums);
             }
 
-            imp.functions.push(Generator::parse_fn(&message, &mut imports)?);
+            imp.functions.push(Generator::parse_fn(&message)?);
 
             imp.functions.push(Generator::write_bytes_fn(&message));
 

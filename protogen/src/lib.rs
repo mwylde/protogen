@@ -1,5 +1,9 @@
 extern crate nom;
 
+use std::ops::Range;
+use std::ops::RangeFrom;
+use std::ops::RangeTo;
+
 
 #[cfg(test)]
 mod tests {
@@ -38,6 +42,34 @@ mod tests {
         let mut buf = vec![];
         write_i16_le(&mut buf, -32350);
         assert_eq!(buf, &[162, 129]);
+    }
+
+    #[test]
+    fn test_ranges() {
+        let buf = vec![1u8, 2, 3, 4];
+        let state = State {
+            data: &buf,
+            offset: 1,
+            bit_offset: 4
+        };
+
+        assert_eq!(State {
+            data: &buf[..3],
+            offset: 2,
+            bit_offset: 4
+        }, state.range(1..2));
+
+        assert_eq!(State {
+            data: &buf,
+            offset: 3,
+            bit_offset: 4
+        }, state.range_from(2..));
+
+        assert_eq!(State {
+            data: &buf[..4],
+            offset: 1,
+            bit_offset: 4
+        }, state.range_to(..3));
     }
 
     #[test]
@@ -367,15 +399,15 @@ pub enum ErrorType {
 
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct Error {
-    error: ErrorType,
-    position: usize
+    pub error: ErrorType,
+    pub position: usize
 }
 
 #[derive(Debug, PartialOrd, PartialEq, Copy, Clone)]
 pub struct State<'a> {
-    data: &'a [u8],
-    offset: usize,
-    bit_offset: usize,
+    pub data: &'a [u8],
+    pub offset: usize,
+    pub bit_offset: usize,
 }
 
 impl <'a> State<'a> {
@@ -386,6 +418,31 @@ impl <'a> State<'a> {
             bit_offset: 0,
         }
     }
+
+    pub fn range(&self, index: Range<usize>) -> State<'a> {
+        State {
+            data: &self.data[..self.offset + index.end],
+            offset: self.offset + index.start,
+            bit_offset: self.bit_offset,
+        }
+    }
+
+    pub fn range_from(&self, index: RangeFrom<usize>) -> State<'a> {
+        State {
+            data: &self.data,
+            offset: self.offset + index.start,
+            bit_offset: self.bit_offset,
+        }
+    }
+
+    pub fn range_to(&self, index: RangeTo<usize>) -> State<'a> {
+        State {
+            data: &self.data[..self.offset + index.end],
+            offset: self.offset,
+            bit_offset: self.bit_offset,
+        }
+    }
+
 }
 
 fn expect(state: State, num_bits: usize) -> Result<(), Error> {
@@ -399,7 +456,7 @@ fn expect(state: State, num_bits: usize) -> Result<(), Error> {
     }
 }
 
-type PResult<T> = Result<T, Error>;
+pub type PResult<T> = Result<T, Error>;
 
 macro_rules! read_bits_width (
   ($name:ident, $t:ty) => (
@@ -685,7 +742,11 @@ macro_rules! many(
                     _s = s1;
                     v.push(x);
                     if max.is_some() && v.len() > max.unwrap() {
-                       error = Some(fail($state));
+                       error = Some(Error {
+         error: ErrorType::Failure,
+        position: $state.offset * 8 + $state.bit_offset
+    }
+                       );
                        break;
                     }
                 }
