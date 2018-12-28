@@ -11,7 +11,6 @@ mod tests {
     use super::*;
     use parser::{ChooseVariant, Expression, Field, Value};
     use parser::Arg;
-    use nom::*;
 
     #[test]
     fn test_to_camel_case() {
@@ -565,15 +564,15 @@ impl Generator {
         Ok(match data_type {
             DataType::Value(ref s) => {
                 match s.as_ref() {
-                    "u8"  => "le_u8".to_string(),
-                    "u16" => "le_u16".to_string(),
-                    "u32" => "le_u32".to_string(),
-                    "u64" => "le_u64".to_string(),
-                    "i8"  => "le_i8".to_string(),
-                    "i16" => "le_i16".to_string(),
-                    "i32" => "le_i32".to_string(),
-                    "i64" => "le_i64".to_string(),
-                    "cstring" => "map_res!(take_until!(\"\\0\"), |v: &[u8]| String::from_utf8(v.to_owned()))".to_string(),
+                    "u8"  => "read_u8_le()".to_string(),
+                    "u16" => "read_u16_le()".to_string(),
+                    "u32" => "read_u32_le()".to_string(),
+                    "u64" => "read_u64_le()".to_string(),
+                    "i8"  => "read_i8_le()".to_string(),
+                    "i16" => "read_i16_le()".to_string(),
+                    "i32" => "read_i32_le()".to_string(),
+                    "i64" => "read_i64_le()".to_string(),
+                    "cstring" => "map_res!(many!(call!(not(0))), |v| String::from_utf8(v))".to_string(),
                     t => return Err(format!("Unknown type {} in {}", t, prefix)),
                 }
             },
@@ -582,13 +581,13 @@ impl Generator {
                     return Err(format!("Expected one argument to str_utf8, found {}", args.len()));
                 }
 
-                format!("map_res!(take!({}), |v: &[u8]| String::from_utf8(v.to_owned()))",
+                format!("map_res!(call!(read_bytes({})), |v| String::from_utf8(v))",
                         Generator::render_expression("", &args.get(0).unwrap()))
             },
             DataType::Message { ref name, ref args } => {
                 let fun = to_camel_case(name, true);
                 if args.is_empty() {
-                    format!("{}::parse", fun)
+                    format!("{}::parse()", fun)
                 } else {
                     let args: Vec<String> = args.iter().map(|e| {
                         let expr = Generator::render_expression("", e);
@@ -601,12 +600,12 @@ impl Generator {
                             expr
                         }
                     }).collect();
-                    format!("call!({}::parse, {})", fun, args.join(", "))
+                    format!("{}::parse({})", fun, args.join(", "))
                 }
             },
             DataType::Choose(ref variants) => {
                 let vs: Vec<String> = variants.iter().map(|v| {
-                    format!("        {} => {{|v| {}::{}(v)}}",
+                    format!("        map!(call!({}), |v| {}::{}(v))",
                             Generator::parser_for_data_type(
                                 &[prefix, &to_camel_case(&v.name, true)].join("_"),
                                 field_types,
@@ -614,7 +613,7 @@ impl Generator {
                         prefix, v.name)
                 }).collect();
 
-                format!("alt!(\n{}\n)", vs.join(" |\n"))
+                format!("choose!(\n{}\n)", vs.join(" |\n"))
             },
             DataType::Array { ref data_type, ref length } => {
                 let subparser = Generator::parser_for_data_type(prefix, field_types,data_type)?;
@@ -637,14 +636,14 @@ impl Generator {
                     }
                 };
 
-                format!("count!({}, {})", subparser, l)
+                format!("count!({}, call!({}))", l, subparser)
             }
             DataType::ManyCombinator { ref data_type } => {
                 let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
-                format!("many0!(complete!({}))", subparser)
+                format!("many!({})", subparser)
             }
             DataType::RestCombinator => {
-                "protogen::rest".to_string()
+                "rest()".to_string()
             }
         })
     }
@@ -780,7 +779,7 @@ impl Generator {
                 let (input, output, _) = io.get(&f.name[..])
                     .expect("missing i/o info for field");
 
-                fun.body.push(format!("let ({}, _{}) = try_parse!({}, {});", output, f.name,
+                fun.body.push(format!("let ({}, _{}) = call!({}, {})?;", output, f.name,
                                       input, Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?));
 
                 if let Some(ref constraints) = f.constraints {
@@ -948,7 +947,7 @@ impl Generator {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
-        let mut imports: HashSet<String> = ["nom::*".to_string()]
+        let mut imports: HashSet<String> = ["protogen::*".to_string()]
             .iter().cloned().collect();
 
         for message in &messages {

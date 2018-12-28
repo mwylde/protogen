@@ -1,6 +1,5 @@
 extern crate nom;
 
-use nom::IResult;
 
 #[cfg(test)]
 mod tests {
@@ -187,6 +186,21 @@ mod tests {
     }
 
     #[test]
+    fn test_call() {
+        let buf = vec![10u8];
+        let state = State::from_slice(&buf);
+
+        let (_, x) = call!(state, read_u8_le()).unwrap();
+        assert_eq!(10, x);
+
+        let (_, x) = call!(state, read_bytes(1)).unwrap();
+        assert_eq!(vec![10], x);
+
+        let (_, x) = call!(state, call!(read_bytes(1))).unwrap();
+        assert_eq!(vec![10], x);
+    }
+
+    #[test]
     fn test_tag() {
         let buf = "hello".as_bytes();
         let state = State::from_slice(buf);
@@ -207,29 +221,103 @@ mod tests {
         }), err);
     }
 
+    #[test]
+    fn test_count() {
+        let buf = [1u8, 2, 3, 4];
+        let state = State::from_slice(&buf);
+        let (state, v) = count!(state, 3, call!(read_u8_le())).unwrap();
+        assert_eq!(vec![1, 2, 3], v);
+
+        let err = count!(state, 3, call!(read_u8_le()));
+        assert_eq!(Err(Error {
+            error: ErrorType::Incomplete(8),
+            position: 32,
+        }), err);
+    }
 
     #[test]
     fn test_many() {
         let buf = "buffalobuffalobuffaloxx".as_bytes();
         let state = State::from_slice(buf);
-        let (state, v) = many!(state, None, None, tag("buffalo".as_bytes())).unwrap();
+        let (state, v) = many!(state, call!(tag("buffalo".as_bytes()))).unwrap();
         assert_eq!(3, v.len());
         assert_eq!(21, state.offset);
         assert_eq!(0, state.bit_offset);
+
+        let buf = [104u8, 101, 108, 108, 111, 0, 10, 11];
+        let state = State::from_slice(&buf);
+        let (_, v) = many!(state, None, None, call!(not(0))).unwrap();
+        assert_eq!(v, [104u8, 101, 108, 108, 111]);
+    }
+
+    #[test]
+    fn test_map() {
+        let buf = [1u8];
+        let state = State::from_slice(&buf);
+        let (_, x) = map!(state, call!(read_u8_le()), |x| x*2).unwrap();
+        assert_eq!(2, x);
+    }
+
+    #[test]
+    fn test_map_res() {
+        let buf = "hello".as_bytes();
+        let state = State::from_slice(&buf);
+
+        let (_, string) = map_res!(state, call!(read_bytes(5)), |v| String::from_utf8(v)).unwrap();
+        assert_eq!("hello".to_string(), string);
     }
 
     #[test]
     fn test_choose() {
         let buf = "abc".as_bytes();
         let state = State::from_slice(buf);
-        let (_state, v) = choose!(state, tag("xyza".as_bytes()) | tag("ab".as_bytes())).unwrap();
+        let (_state, v) = choose!(state, call!(tag("xyza".as_bytes())) | call!(tag("ab".as_bytes()))).unwrap();
         assert_eq!("ab".as_bytes(), v);
+    }
+
+    #[test]
+    fn test_messages() {
+        struct Message {
+            f1: u8,
+            f2: u16,
+            text: String,
+        }
+
+        fn parser(s: State) -> PResult<(State, Message)> {
+            let (s, _) = tag(s, "msg1".as_bytes())?;
+            let (s, f1) = read_u8_le(s)?;
+            let (s, f2) = read_u16_le(s)?;
+            let (s, text) = map_res!(
+                s, many!(None, None, call!(not(0))), {|v| String::from_utf8(v)})?;
+            let (s, _) = tag(s, &[0])?;
+
+            Ok((s, Message {
+                f1, f2, text
+            }))
+        }
+
+        let buf = [109u8, 115, 103, 49, 10, 60, 91, 104, 101, 108, 108, 111, 0];
+        let state = State::from_slice(&buf);
+        let (state, message) = parser(state).unwrap();
+        assert_eq!(10, message.f1);
+        assert_eq!(23356, message.f2);
+        assert_eq!("hello".to_string(), message.text);
+        assert_eq!(13, state.offset);
     }
 }
 
 
-pub fn rest(i: &[u8]) -> IResult<&[u8], Vec<u8>> {
-    Ok((&[][..], i.to_vec()))
+pub fn rest(s: State) -> PResult<(State, Vec<u8>)> {
+    if s.bit_offset == 0 {
+        let v = s.data[s.offset..].to_vec();
+        Ok((State {
+            data: s.data,
+            offset: s.data.len(),
+            bit_offset: 0
+        }, v))
+    } else {
+        unimplemented!();
+    }
 }
 
 pub fn write_u16_le(buf: &mut Vec<u8>, v: u16) {
@@ -519,9 +607,65 @@ pub fn tag<'a, 'b>(state: State<'a>, tag: &'b [u8]) -> PResult<(State<'a>, &'b [
     }
 }
 
+pub fn not(state: State, byte: u8) -> PResult<(State, u8)> {
+    let (s1, b) = read_u8_le(state)?;
+    if b == byte {
+        Err(fail(state))
+    } else {
+        Ok((s1, b))
+    }
+}
+
 #[macro_export(local_inner_macros)]
-macro_rules! many (
-($state: expr, $max: expr, $min: expr, $parser:ident( $($args:tt)* )) => (
+macro_rules! call(
+    ($state: expr, $parser:path( $($args:tt)* )) => (
+        $parser($state, $($args)*);
+    );
+
+    ($state: expr, $parser:ident!( $($args:tt)* )) => (
+        $parser!($state, $($args)*);
+    );
+);
+
+#[macro_export(local_inner_macros)]
+macro_rules! map_res(
+  ($state: expr, $parser:ident!( $($args:tt)* ), $map:expr) => (
+    {
+        let res = $parser!($state, $($args)*);
+        match res {
+          Ok((s, v)) => {
+            match $map(v) {
+              Ok(vp) => Ok((s, vp)),
+              Err(_) => {
+                Err($crate::Error {
+                  error: $crate::ErrorType::Failure,
+                  position: $state.offset * 8 + $state.bit_offset,
+                })
+              }
+            }
+          },
+          Err(err) => Err(err),
+        }
+    }
+  );
+);
+
+#[macro_export(local_inner_macros)]
+macro_rules! map(
+  ($state: expr, $parser:ident!( $($args:tt)* ), $map:expr) => (
+    {
+        let res = $parser!($state, $($args)*);
+        match res {
+          Ok((s, v)) => Ok((s, $map(v))),
+          Err(err) => Err(err),
+        }
+    }
+  );
+);
+
+#[macro_export(local_inner_macros)]
+macro_rules! many(
+($state: expr, $max: expr, $min: expr, $parser:ident!( $($args:tt)* )) => (
     {
         let min: std::option::Option<usize> = $min;
         let max: std::option::Option<usize> = $max;
@@ -529,7 +673,7 @@ macro_rules! many (
         let mut _s = $state;
         let mut error: std::option::Option<$crate::Error> = None;
         loop {
-            match $parser(_s, $($args)*) {
+            match $parser!(_s, $($args)*) {
                 Ok((s1, x)) => {
                     if s1.offset == $state.offset && s1.bit_offset == $state.bit_offset {
                       break;
@@ -556,13 +700,17 @@ macro_rules! many (
           Err(error.unwrap())
         }
     }
-));
+);
+($state:expr, $parser:ident!( $($args:tt)*)) => (
+   many!($state, None, None, $parser!($($args)*))
+);
+);
 
 #[macro_export(local_inner_macros)]
 macro_rules! choose (
-($state: expr, $subrule:ident( $($args:tt)*) | $($rest:tt)*) => (
+($state: expr, $subrule:ident!( $($args:tt)*) | $($rest:tt)*) => (
   {
-    let res = $subrule($state, $($args)*);
+    let res = $subrule!($state, $($args)*);
     match res {
       Ok(_) => res,
       Err(_) => choose!($state, $($rest)*),
@@ -570,9 +718,9 @@ macro_rules! choose (
   }
 );
 
-($state: expr, $subrule:ident( $($args:tt)*)) => (
+($state: expr, $subrule:ident!( $($args:tt)*)) => (
   {
-    let res = $subrule($state, $($args)*);
+    let res = $subrule!($state, $($args)*);
     match res {
       Ok(_) => res,
       Err(_) => Err($crate::Error {
@@ -584,15 +732,31 @@ macro_rules! choose (
 )
 );
 
-
-//pub fn choose<'a, T>(state: State<'a>, parsers: [Parser<T>; 2]) -> PResult<(State<'a>, T)> {
-//    for parser in &parsers {
-//        match parser(state) {
-//            Ok(r) => return Ok(r),
-//            Err( Error { error: ErrorType::Incomplete(i), position } ) =>
-//                return Err(Error { error: ErrorType::Incomplete(i), position }),
-//            _ => (),
-//        }
-//    };
-//    Err(fail(state))
-//}
+#[macro_export(local_inner_macros)]
+macro_rules! count (
+($state:expr, $count:expr, $parser:ident!( $($args:tt)*)) => (
+{
+    let _count: usize = $count;
+    let mut v = Vec::with_capacity(_count);
+    let mut s = $state;
+    let mut err = None;
+    for _ in 0.._count {
+        let res = $parser!(s, $($args)*);
+        match res {
+            Ok((s1, x)) => {
+                s = s1;
+                v.push(x);
+            }
+            Err(e) => {
+               err = Some(e);
+               break;
+            }
+        }
+    }
+    if err.is_some() {
+       Err(err.unwrap())
+    }  else {
+       Ok((s, v))
+    }
+})
+);
