@@ -190,13 +190,13 @@ mod tests {
         let buf = vec![10u8];
         let state = State::from_slice(&buf);
 
-        let (_, x) = call!(state, read_u8_le()).unwrap();
+        let (_, x) = call!(state, read_u8_le).unwrap();
         assert_eq!(10, x);
 
-        let (_, x) = call!(state, read_bytes(1)).unwrap();
+        let (_, x) = call!(state, read_bytes, 1).unwrap();
         assert_eq!(vec![10], x);
 
-        let (_, x) = call!(state, call!(read_bytes(1))).unwrap();
+        let (_, x) = call!(state, call!(read_bytes, 1)).unwrap();
         assert_eq!(vec![10], x);
     }
 
@@ -225,10 +225,10 @@ mod tests {
     fn test_count() {
         let buf = [1u8, 2, 3, 4];
         let state = State::from_slice(&buf);
-        let (state, v) = count!(state, 3, call!(read_u8_le())).unwrap();
+        let (state, v) = count!(state, 3, call!(read_u8_le)).unwrap();
         assert_eq!(vec![1, 2, 3], v);
 
-        let err = count!(state, 3, call!(read_u8_le()));
+        let err = count!(state, 3, call!(read_u8_le));
         assert_eq!(Err(Error {
             error: ErrorType::Incomplete(8),
             position: 32,
@@ -239,14 +239,14 @@ mod tests {
     fn test_many() {
         let buf = "buffalobuffalobuffaloxx".as_bytes();
         let state = State::from_slice(buf);
-        let (state, v) = many!(state, call!(tag("buffalo".as_bytes()))).unwrap();
+        let (state, v) = many!(state, call!(tag, "buffalo".as_bytes())).unwrap();
         assert_eq!(3, v.len());
         assert_eq!(21, state.offset);
         assert_eq!(0, state.bit_offset);
 
         let buf = [104u8, 101, 108, 108, 111, 0, 10, 11];
         let state = State::from_slice(&buf);
-        let (_, v) = many!(state, None, None, call!(not(0))).unwrap();
+        let (_, v) = many!(state, None, None, call!(not, 0)).unwrap();
         assert_eq!(v, [104u8, 101, 108, 108, 111]);
     }
 
@@ -254,7 +254,7 @@ mod tests {
     fn test_map() {
         let buf = [1u8];
         let state = State::from_slice(&buf);
-        let (_, x) = map!(state, call!(read_u8_le()), |x| x*2).unwrap();
+        let (_, x) = map!(state, call!(read_u8_le), |x| x*2).unwrap();
         assert_eq!(2, x);
     }
 
@@ -263,7 +263,7 @@ mod tests {
         let buf = "hello".as_bytes();
         let state = State::from_slice(&buf);
 
-        let (_, string) = map_res!(state, call!(read_bytes(5)), |v| String::from_utf8(v)).unwrap();
+        let (_, string) = map_res!(state, call!(read_bytes, 5), |v| String::from_utf8(v)).unwrap();
         assert_eq!("hello".to_string(), string);
     }
 
@@ -271,7 +271,7 @@ mod tests {
     fn test_choose() {
         let buf = "abc".as_bytes();
         let state = State::from_slice(buf);
-        let (_state, v) = choose!(state, call!(tag("xyza".as_bytes())) | call!(tag("ab".as_bytes()))).unwrap();
+        let (_state, v) = choose!(state, call!(tag, "xyza".as_bytes()) | call!(tag, "ab".as_bytes())).unwrap();
         assert_eq!("ab".as_bytes(), v);
     }
 
@@ -288,7 +288,7 @@ mod tests {
             let (s, f1) = read_u8_le(s)?;
             let (s, f2) = read_u16_le(s)?;
             let (s, text) = map_res!(
-                s, many!(None, None, call!(not(0))), {|v| String::from_utf8(v)})?;
+                s, many!(None, None, call!(not, 0)), {|v| String::from_utf8(v)})?;
             let (s, _) = tag(s, &[0])?;
 
             Ok((s, Message {
@@ -618,12 +618,16 @@ pub fn not(state: State, byte: u8) -> PResult<(State, u8)> {
 
 #[macro_export(local_inner_macros)]
 macro_rules! call(
-    ($state: expr, $parser:path( $($args:tt)* )) => (
-        $parser($state, $($args)*);
+    ($state:expr, $parser:ident! ($($args:tt)*)) => (
+        $parser! ($state, $($args)*)
     );
 
-    ($state: expr, $parser:ident!( $($args:tt)* )) => (
-        $parser!($state, $($args)*);
+    ($state:expr, $parser:expr) => (
+        $parser( $state )
+    );
+
+    ($state:expr, $parser:expr, $($args:expr),* ) => (
+        $parser($state, $($args),*)
     );
 );
 
