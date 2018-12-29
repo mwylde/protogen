@@ -4,7 +4,7 @@ tcp_header = {
   public sequence_number: u32;
   public acknowledgement_number: u32;
   @data_offset: u4;
-  reserved: u3;
+  public reserved: u3;
   public ns: u1;
   public cwr: u1;
   public ece: u1;

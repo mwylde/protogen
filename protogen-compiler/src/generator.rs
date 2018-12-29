@@ -868,17 +868,30 @@ impl Generator {
         match data_type {
             DataType::Value(ref v) => {
                 match v.as_ref() {
-                    "u8" => format!("buf.push({});", vref),
-                    "i8" => format!("protogen::write_i8(buf, {});", vref),
+                    "u8" => format!("buf.push_u8({});", vref),
+                    "i8" => format!("buf.push_i8({});", vref),
                     w @ "u16" | w @ "u32" | w @ "u64" | w @ "i16" | w @ "i32" | w @ "i64"  =>
-                        format!("protogen::write_{}_le(buf, {});", w, vref),
-                    "cstring" => format!("buf.extend_from_slice({});", vref),
-                    _ => "unimplemented!();".to_string(),
+                        format!("buf.push_{}_le({});", w, vref),
+                    "cstring" => format!("buf.push_bytes({});", vref),
+                    "u1" => format!("buf.push_bit({} == 1);", vref),
+                    v => {
+                        if let Ok((sign, size, _width)) = Generator::parse_int_type(v) {
+                            if sign == "i" {
+                                // not really clear what to do here... does this even make sense??
+                                "unimplemented();".to_string()
+                            } else {
+                                format!("for _v in 0..{} {{ buf.push_bit({} & (1 << _v) > 0) }}",
+                                        size, vref)
+                            }
+                        } else {
+                            "unimplemented!();".to_string()
+                        }
+                    },
                 }
             }
             DataType::Array { data_type, .. } => {
                 match data_type.as_ref() {
-                    DataType::Value(v) if *v == "u8" => format!("buf.extend_from_slice({});", vref),
+                    DataType::Value(v) if *v == "u8" => format!("buf.push_bytes({});", vref),
                     dt => {
                         format!("for v in {} {{ {} }}", vref,
                                 Generator::writer_for_field(message, field_name, "*v", dt))
@@ -886,7 +899,7 @@ impl Generator {
                 }
             },
             DataType::Message { name: ref m, ..} if m == "str_utf8" => {
-                format!("buf.extend_from_slice({}.as_bytes());", var)
+                format!("buf.push_bytes({}.as_bytes());", var)
             }
             DataType::Message { .. } => {
                 format!("({}).write_bytes(buf);", var)
@@ -897,7 +910,7 @@ impl Generator {
                                                 data_type: data_type.clone(),
                                                 length: Expression::Value(Value::Number(0)) })
             }
-            DataType::RestCombinator => format!("buf.extend_from_slice({});", vref),
+            DataType::RestCombinator => format!("buf.push_bytes({});", vref),
             DataType::Choose(variants) => {
                 let matches: Vec<String> = variants.iter().map(|var| {
                     format!("        {}_{}::{}(v) => v.write_bytes(buf),",
@@ -928,7 +941,7 @@ impl Generator {
             name: "write_bytes".to_string(),
             public: false,
             generics: vec![],
-            args: vec!["&self".to_string(), format!("{}: &mut Vec<u8>", buf_name)],
+            args: vec!["&self".to_string(), format!("{}: &mut buffer::BitBuffer", buf_name)],
             return_type: None,
             body
         }
@@ -1023,9 +1036,9 @@ impl Generator {
                 args: vec!["&self".to_string()],
                 return_type: Some("Vec<u8>".to_string()),
                 body: vec![
-                    "let mut buf = vec![];".to_string(),
+                    "let mut buf = buffer::BitBuffer::new();".to_string(),
                     "self.write_bytes(&mut buf);".to_string(),
-                    "buf".to_string()
+                    "buf.into_vec()".to_string()
                 ]
             });
 
