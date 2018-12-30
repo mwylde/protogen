@@ -206,8 +206,8 @@ hci_command = {
     #[test]
     fn field_constraints() {
         let text = " hci_command =  { \
-           header: [u8; 3] | [b\"wtf\"]; \
-           public @ocf : u8 | [0x22 + 10, 5]; }";
+                    header: [u8; 3] | [b\"wtf\"]; \
+                    public @ocf : u8 | [0x22 + 10, 5]; }";
 
         assert_eq!(
             message(text.as_bytes()),
@@ -228,7 +228,8 @@ hci_command = {
                             },
                             value: None,
                             constraints: Some(vec![Expression::Value(Value::ByteArray(
-                                "wtf".as_bytes().to_vec()))]),
+                                "wtf".as_bytes().to_vec()
+                            ))]),
                         },
                         Field {
                             public: true,
@@ -238,11 +239,15 @@ hci_command = {
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                             constraints: Some(vec![
-                                Expression::Binop("+".to_string(),
-                                                  Box::new(ex_num(0x22)),
-                                                  Box::new(ex_num(10))),
-                                ex_num(5)]),
-                        }],
+                                Expression::Binop(
+                                    "+".to_string(),
+                                    Box::new(ex_num(0x22)),
+                                    Box::new(ex_num(10))
+                                ),
+                                ex_num(5)
+                            ]),
+                        }
+                    ],
                 }
             ))
         );
@@ -275,10 +280,22 @@ hci_command = {
 
     #[test]
     fn test_number() {
-        assert_eq!(number_value(b"0x10;"), Ok((&[b';'][..], Value::Number(0x10))));
-        assert_eq!(number_value(b"0X5235;"), Ok((&[b';'][..], Value::Number(0x5235))));
-        assert_eq!(number_value(b"1241;"), Ok((&[b';'][..], Value::Number(1241))));
-        assert_eq!(number_value(b"0b100000010011001;"), Ok((&[b';'][..], Value::Number(16537))));
+        assert_eq!(
+            number_value(b"0x10;"),
+            Ok((&[b';'][..], Value::Number(0x10)))
+        );
+        assert_eq!(
+            number_value(b"0X5235;"),
+            Ok((&[b';'][..], Value::Number(0x5235)))
+        );
+        assert_eq!(
+            number_value(b"1241;"),
+            Ok((&[b';'][..], Value::Number(1241)))
+        );
+        assert_eq!(
+            number_value(b"0b100000010011001;"),
+            Ok((&[b';'][..], Value::Number(16537)))
+        );
     }
 
     #[test]
@@ -322,7 +339,9 @@ hci_command = {
                             name: "name".to_string(),
                             apply_to: None,
                             data_type: DataType::Value("String".to_string()),
-                            value: Some(Expression::Value(Value::String("this is a string.".to_string()))),
+                            value: Some(Expression::Value(Value::String(
+                                "this is a string.".to_string()
+                            ))),
                             constraints: None,
                         },
                     ],
@@ -383,7 +402,8 @@ hci_message ($name: u32) = {
                                         name: "hci_data".to_string(),
                                         args: vec![
                                             Expression::Variable("@type".to_string()),
-                                            Expression::Variable("$name".to_string())],
+                                            Expression::Variable("$name".to_string())
+                                        ],
                                     },
                                 },
                             ]),
@@ -436,15 +456,14 @@ message = {
                             apply_to: None,
                             data_type: DataType::Message {
                                 name: "str_utf8".to_string(),
-                                args: vec![
-                                    Expression::Variable("@len".to_string())
-                                ]
+                                args: vec![Expression::Variable("@len".to_string())]
                             },
                             value: None,
                             constraints: None,
                         }
                     ]
-                }))
+                }
+            ))
         )
     }
 
@@ -506,9 +525,11 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Binop("/".to_string(),
-                                                          Box::new(ex_var("@length")),
-                                                          Box::new(ex_num(2)))
+                                length: Expression::Binop(
+                                    "/".to_string(),
+                                    Box::new(ex_var("@length")),
+                                    Box::new(ex_num(2))
+                                )
                             },
                             value: None,
                             constraints: None,
@@ -634,37 +655,56 @@ inquiry_result = {
     #[test]
     fn expressions() {
         let text = "@var * 5;";
-        assert_eq!(expression(text.as_bytes()),
-                   Ok((&[b';'][..], Expression::Binop("*".to_string(),
-                                                  Box::new(ex_var("@var")),
-                                                  Box::new(ex_num(5))))));
+        assert_eq!(
+            expression(text.as_bytes()),
+            Ok((
+                &[b';'][..],
+                Expression::Binop(
+                    "*".to_string(),
+                    Box::new(ex_var("@var")),
+                    Box::new(ex_num(5))
+                )
+            ))
+        );
 
         let text = "(@var * 5);";
-        assert_eq!(expression(text.as_bytes()),
-                   Ok((&[b';'][..], Expression::Binop("*".to_string(),
-                                                      Box::new(ex_var("@var")),
-                                                      Box::new(ex_num(5))))));
+        assert_eq!(
+            expression(text.as_bytes()),
+            Ok((
+                &[b';'][..],
+                Expression::Binop(
+                    "*".to_string(),
+                    Box::new(ex_var("@var")),
+                    Box::new(ex_num(5))
+                )
+            ))
+        );
 
         fn var_minus_five() -> Box<Expression> {
             Box::new(Expression::Binop(
                 "-".to_string(),
                 Box::new(ex_var("@var")),
-                Box::new(ex_num(5))))
+                Box::new(ex_num(5)),
+            ))
         }
 
         let text = "(@var - 5) * 6;";
-        assert_eq!(expression(text.as_bytes()),
-                   Ok((&[b';'][..], Expression::Binop(
-                       "*".to_string(),
-                       var_minus_five(),
-                       Box::new(ex_num(6))))));
+        assert_eq!(
+            expression(text.as_bytes()),
+            Ok((
+                &[b';'][..],
+                Expression::Binop("*".to_string(), var_minus_five(), Box::new(ex_num(6)))
+            ))
+        );
 
         let text = "6 * (@var - 5);";
-        assert_eq!(expression(text.as_bytes()),
-                   Ok((&[b';'][..], Expression::Binop(
-                       "*".to_string(),
-                       Box::new(ex_num(6)),
-                       var_minus_five()))));
+        assert_eq!(
+            expression(text.as_bytes()),
+            Ok((
+                &[b';'][..],
+                Expression::Binop("*".to_string(), Box::new(ex_num(6)), var_minus_five())
+            ))
+        );
     }
 
     #[test]
@@ -701,7 +741,8 @@ hci_command = {
                             value: Some(Expression::Binop(
                                 "&".to_string(),
                                 Box::new(Expression::Variable("@opcode".to_string())),
-                                Box::new(Expression::Value(Value::Number(224))))),
+                                Box::new(Expression::Value(Value::Number(224)))
+                            )),
                             constraints: None,
                         },
                     ],
@@ -710,19 +751,19 @@ hci_command = {
         );
     }
 
-//    #[test]
-//    fn test_file() {
-//        let source = include_str!("../../protogen-examples/src/hci_message.protogen");
-//        match source_file(source.trim().as_bytes()) {
-//            Ok((rem, messages)) => {
-//                assert_eq!(0, rem.len());
-//                assert_eq!(12, messages.len());
-//            }
-//            Err(e) => {
-//                debug_assert!(false, "got error: {:?}", e);
-//            }
-//        }
-//    }
+    //    #[test]
+    //    fn test_file() {
+    //        let source = include_str!("../../protogen-examples/src/hci_message.protogen");
+    //        match source_file(source.trim().as_bytes()) {
+    //            Ok((rem, messages)) => {
+    //                assert_eq!(0, rem.len());
+    //                assert_eq!(12, messages.len());
+    //            }
+    //            Err(e) => {
+    //                debug_assert!(false, "got error: {:?}", e);
+    //            }
+    //        }
+    //    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
@@ -747,7 +788,7 @@ pub enum DataType {
         data_type: Box<DataType>,
     },
     RestCombinator,
-    Choose(Vec<ChooseVariant>)
+    Choose(Vec<ChooseVariant>),
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
@@ -765,7 +806,7 @@ pub struct Field {
     pub apply_to: Option<String>,
     pub data_type: DataType,
     pub value: Option<Expression>,
-    pub constraints: Option<Vec<Expression>>
+    pub constraints: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
@@ -797,7 +838,10 @@ fn is_string_char(i: u8) -> bool {
     i != b'\"'
 }
 
-named!(comment<()>, do_parse!(tag!("//") >> take_until_and_consume!("\n") >> ()));
+named!(
+    comment<()>,
+    do_parse!(tag!("//") >> take_until_and_consume!("\n") >> ())
+);
 
 named!(br<()>, alt!(map!(multispace, |_| ()) | comment));
 
@@ -805,7 +849,6 @@ named!(
     symbol<&str>,
     map_res!(take_while1!(is_symbol_char), str::from_utf8)
 );
-
 
 named!(pub string<String>,
     map!(delimited!(tag!("\""),
@@ -838,18 +881,26 @@ fn convert_bin(bytes: &[u8]) -> u64 {
 
 named!(
     hex_u64<u64>,
-    map!(take_while_m_n!(1, 16, is_hex_digit), convert_hex));
+    map!(take_while_m_n!(1, 16, is_hex_digit), convert_hex)
+);
 
 named!(
     bin_u64<u64>,
-    map!(take_while_m_n!(1, 64, |c| c == b'0' || c == b'1'), convert_bin));
+    map!(
+        take_while_m_n!(1, 64, |c| c == b'0' || c == b'1'),
+        convert_bin
+    )
+);
 
 named!(
     hex_number<u64>,
-    do_parse!(_0x: alt_complete!(tag!("0x") | tag!("0X")) >> digits: hex_u64 >> (digits)));
+    do_parse!(_0x: alt_complete!(tag!("0x") | tag!("0X")) >> digits: hex_u64 >> (digits))
+);
 
-named!(bin_number<u64>,
-  do_parse!(_0x: alt_complete!(tag!("0b") | tag!("0B")) >> digits: bin_u64 >> (digits)));
+named!(
+    bin_number<u64>,
+    do_parse!(_0x: alt_complete!(tag!("0b") | tag!("0B")) >> digits: bin_u64 >> (digits))
+);
 
 named!(
     dec_number<u64>,
@@ -859,19 +910,17 @@ named!(
     )
 );
 
-named!(number<u64>,
+named!(
+    number<u64>,
     alt_complete!(hex_number | bin_number | dec_number)
 );
 
-named!(
-    number_value<Value>,
-    map!(number, Value::Number));
+named!(number_value<Value>, map!(number, Value::Number));
 
 named!(
     byte_array_value<Value>,
-    do_parse!(
-      tag!("b") >> string: string >> ( Value::ByteArray(string.as_bytes().to_vec()))
-    ));
+    do_parse!(tag!("b") >> string: string >> (Value::ByteArray(string.as_bytes().to_vec())))
+);
 
 named!(
     variable<String>,
@@ -879,14 +928,19 @@ named!(
         sigil: map_res!(alt!(tag!("@") | tag!("$")), str::from_utf8)
             >> name: symbol
             >> ([sigil, name].join("").to_string())
-    ));
+    )
+);
 
-named!(value<Value>, alt!(byte_array_value | string_value | number_value));
+named!(
+    value<Value>,
+    alt!(byte_array_value | string_value | number_value)
+);
 
 named!(
     message_type<DataType>,
     ws!(do_parse!(
-        name: symbol >> args: delimited!(tag!("("), separated_list!(tag!(","), expression), tag!(")"))
+        name: symbol
+            >> args: delimited!(tag!("("), separated_list!(tag!(","), expression), tag!(")"))
             >> (DataType::Message {
                 name: name.to_string(),
                 args,
@@ -902,15 +956,13 @@ named!(
             >> (DataType::ManyCombinator {
                 data_type: Box::new(data_type),
             })
-    )));
+    ))
+);
 
 named!(
     rest_combinator_type<DataType>,
-    ws!(do_parse!(
-        tag!("rest!()")
-            >> (DataType::RestCombinator { })
-    )));
-
+    ws!(do_parse!(tag!("rest!()") >> (DataType::RestCombinator {})))
+);
 
 named!(
     choose_type<DataType>,
@@ -922,7 +974,9 @@ named!(
                     separated_list!(
                         tag!("|"),
                         do_parse!(
-                            name: symbol >> _eq: tag!("=") >> data_type: data_type
+                            name: symbol
+                                >> _eq: tag!("=")
+                                >> data_type: data_type
                                 >> (ChooseVariant {
                                     name: name.to_string(),
                                     data_type,
@@ -930,36 +984,46 @@ named!(
                         )
                     ),
                     tag!("}")
-                ) >> (DataType::Choose(variants))
+                )
+            >> (DataType::Choose(variants))
     ))
 );
 
-named!(apply<String>,
+named!(
+    apply<String>,
+    ws!(do_parse!(tag!("apply") >> source: variable >> (source)))
+);
+
+named!(
+    parens<Expression>,
+    ws!(delimited!(char!('('), expression, char!(')')))
+);
+
+named!(
+    binop<Expression>,
     ws!(do_parse!(
-        tag!("apply") >>
-        source: variable >>
-         ( source )
-    )));
+        lh: terminal_expression
+            >> op: map_res!(
+                alt!(tag!("-") | tag!("+") | tag!("/") | tag!("*")),
+                str::from_utf8
+            )
+            >> rh: expression
+            >> (Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh)))
+    ))
+);
 
-named!(parens<Expression>,
-    ws!(delimited!(char!('('), expression, char!(')'))));
-
-named!(binop<Expression>,
-    ws!(do_parse!(
-        lh: terminal_expression >>
-        op: map_res!(alt!(
-            tag!("-") | tag!("+") | tag!("/") | tag!("*")), str::from_utf8) >>
-        rh: expression >>
-        ( Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh))))));
-
-named!(terminal_expression<Expression>,
+named!(
+    terminal_expression<Expression>,
     ws!(alt!(
         complete!(parens) => {|v| v} |
         complete!(variable) => {|v| Expression::Variable(v)} |
-        complete!(value)   => {|v| Expression::Value(v)})));
+        complete!(value)   => {|v| Expression::Value(v)}))
+);
 
-named!(expression<Expression>,
-    ws!(alt!(binop | terminal_expression)));
+named!(
+    expression<Expression>,
+    ws!(alt!(binop | terminal_expression))
+);
 
 named!(
     array_type<DataType>,
@@ -989,25 +1053,32 @@ named!(
 
 named!(
     assign_expression<Expression>,
-    ws!(do_parse!(_equals: tag!("=") >> value: expression >> (value))));
+    ws!(do_parse!(
+        _equals: tag!("=") >> value: expression >> (value)
+    ))
+);
 
 named!(
     constraints<Vec<Expression>>,
     ws!(do_parse!(
-      tag!("|") >>
-      tag!("[") >>
-      cs: separated_nonempty_list!(tag!(","), expression) >>
-      tag!("]") >> ( cs ))));
+        tag!("|")
+            >> tag!("[")
+            >> cs: separated_nonempty_list!(tag!(","), expression)
+            >> tag!("]")
+            >> (cs)
+    ))
+);
 
 named!(
     assign_value<Value>,
-    ws!(do_parse!(_equals: tag!("=") >> value: value >> (value))));
+    ws!(do_parse!(_equals: tag!("=") >> value: value >> (value)))
+);
 
 named!(
     field<Field>,
     ws!(do_parse!(
-        many0!(br) >>
-        public: opt!(tag!("public"))
+        many0!(br)
+            >> public: opt!(tag!("public"))
             >> variable: opt!(tag!("@"))
             >> name: symbol
             >> _colon: tag!(":")
@@ -1015,15 +1086,16 @@ named!(
             >> data_type: data_type
             >> value: opt!(assign_expression)
             >> constraints: opt!(constraints)
-            >> _semicolon: tag!(";") >> (Field {
-            public: public.is_some(),
-            variable: variable.is_some(),
-            name: name.trim().to_string(),
-            apply_to,
-            data_type,
-            value,
-            constraints: constraints,
-        })
+            >> _semicolon: tag!(";")
+            >> (Field {
+                public: public.is_some(),
+                variable: variable.is_some(),
+                name: name.trim().to_string(),
+                apply_to,
+                data_type,
+                value,
+                constraints: constraints,
+            })
     ))
 );
 
@@ -1034,17 +1106,18 @@ named!(
         separated_list!(
             tag!(","),
             do_parse!(
-                    public: opt!(tag!("public"))
+                public: opt!(tag!("public"))
                     >> _sigil: tag!("$")
                     >> name: symbol
                     >> _colon: tag!(":")
                     >> data_type: data_type
-                    >> value: opt!(assign_value) >> (Arg {
-                    public: public.is_some(),
-                    name: name.to_string(),
-                    data_type,
-                    value,
-                })
+                    >> value: opt!(assign_value)
+                    >> (Arg {
+                        public: public.is_some(),
+                        name: name.to_string(),
+                        data_type,
+                        value,
+                    })
             )
         ),
         tag!(")")

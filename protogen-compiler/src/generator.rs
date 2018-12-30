@@ -1,18 +1,18 @@
-use parser::{DataType, Message};
-use std::collections::HashMap;
-use std::fmt;
 use parser::Expression;
-use parser::Value;
 use parser::Field;
-use std::collections::HashSet;
+use parser::Value;
+use parser::{DataType, Message};
 use regex::Regex;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
 use std::str::FromStr;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::{ChooseVariant, Expression, Field, Value};
     use parser::Arg;
+    use parser::{ChooseVariant, Expression, Field, Value};
 
     #[test]
     fn test_to_camel_case() {
@@ -20,31 +20,31 @@ mod tests {
         assert_eq!("thisIsMyWord", to_camel_case("this_is_my_word", false));
     }
 
-//    #[test]
-//    fn bitstream() {
-//        let b: [u8; 4] = [0b10100011, 0b11100110, 0b01101101, 10];
-//
-//        fn parser(i0: &[u8]) -> IResult<&[u8], ()> {
-////            let (_i, x) = try_parse!(i0, bits!(take_bits!(u8, 3)));
-////            println!("Parsed {:#b} ({:?})", x, _i);
-////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 6)));
-////            println!("Parsed {:#b} ({:?})", x, _i);
-////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 7)));
-////            println!("Parsed {:#b} ({:?})", x, _i);
-//
-//            let (_i, (x, y, z)) = do_parse!(i0,
-//              bits!(
-//
-//              ))
-//
-//            let (_i, x) = try_parse!(_i, le_u8);
-//            println!("Parsed {} ({:?})", x, _i);
-//
-//            Ok((_i, ()))
-//        }
-//
-//        parser(&b[..]).unwrap();
-//    }
+    //    #[test]
+    //    fn bitstream() {
+    //        let b: [u8; 4] = [0b10100011, 0b11100110, 0b01101101, 10];
+    //
+    //        fn parser(i0: &[u8]) -> IResult<&[u8], ()> {
+    ////            let (_i, x) = try_parse!(i0, bits!(take_bits!(u8, 3)));
+    ////            println!("Parsed {:#b} ({:?})", x, _i);
+    ////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 6)));
+    ////            println!("Parsed {:#b} ({:?})", x, _i);
+    ////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 7)));
+    ////            println!("Parsed {:#b} ({:?})", x, _i);
+    //
+    //            let (_i, (x, y, z)) = do_parse!(i0,
+    //              bits!(
+    //
+    //              ))
+    //
+    //            let (_i, x) = try_parse!(_i, le_u8);
+    //            println!("Parsed {} ({:?})", x, _i);
+    //
+    //            Ok((_i, ()))
+    //        }
+    //
+    //        parser(&b[..]).unwrap();
+    //    }
 
     #[test]
     fn test_data_type() {
@@ -270,9 +270,10 @@ pub enum HciCommand_Message {
                         constraints: None,
                     },
                 ],
-            }]).unwrap()
-                .to_string()
-                .trim()
+            }])
+            .unwrap()
+            .to_string()
+            .trim()
         );
     }
 
@@ -342,15 +343,15 @@ pub enum SetEventFilter_Filter {
 
         assert_eq!(expected.trim(), format!("{}", e));
     }
-//
-//    #[test]
-//    fn test_end_to_end() {
-//        let source: &str = include_str!(hci_message.protogen);
-//        let messages = source_file(source.trim().as_bytes()).unwrap().1;
-//
-//        let generator = Generator::from_messages(messages).unwrap();
-//        println!("{}", generator);
-//    }
+    //
+    //    #[test]
+    //    fn test_end_to_end() {
+    //        let source: &str = include_str!(hci_message.protogen);
+    //        let messages = source_file(source.trim().as_bytes()).unwrap().1;
+    //
+    //        let generator = Generator::from_messages(messages).unwrap();
+    //        println!("{}", generator);
+    //    }
 
 }
 
@@ -393,7 +394,10 @@ struct Struct {
 
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n")?;
+        write!(
+            f,
+            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
+        )?;
         write!(f, "pub struct {} {{\n", self.name)?;
 
         for field in &self.fields {
@@ -425,7 +429,10 @@ struct Enum {
 impl fmt::Display for Enum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "#[allow(non_camel_case_types)]\n")?;
-        write!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n")?;
+        write!(
+            f,
+            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
+        )?;
         write!(f, "pub enum {} {{\n", self.name)?;
 
         for field in &self.variants {
@@ -453,8 +460,11 @@ impl fmt::Display for Function {
             "{}fn {}{}({})",
             if self.public { "pub " } else { "" },
             self.name,
-            if !self.generics.is_empty() { format!("<{}>", self.generics.join(", "))}
-                else { String::new() },
+            if !self.generics.is_empty() {
+                format!("<{}>", self.generics.join(", "))
+            } else {
+                String::new()
+            },
             self.args.join(", ")
         )?;
 
@@ -512,22 +522,23 @@ impl Generator {
     fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
             DataType::Value(v) if v == "cstring" => "String".to_string(),
-            DataType::Value(v)  => {
+            DataType::Value(v) => {
                 if let Ok((sign, _, width)) = Generator::parse_int_type(v) {
                     format!("{}{}", sign, width)
                 } else {
                     v.clone()
                 }
-            },
+            }
             DataType::Array { ref data_type, .. } => format!(
                 "Vec<{}>",
                 Generator::render_data_type(prefix, enums, &*data_type)
             ),
-            DataType::Message { ref name, ..} if name == "str_utf8" => "String".to_string(),
+            DataType::Message { ref name, .. } if name == "str_utf8" => "String".to_string(),
             DataType::Message { ref name, .. } => to_camel_case(name, true),
-            DataType::ManyCombinator { ref data_type } => {
-                format!("Vec<{}>", Generator::render_data_type(prefix, enums, &*data_type))
-            }
+            DataType::ManyCombinator { ref data_type } => format!(
+                "Vec<{}>",
+                Generator::render_data_type(prefix, enums, &*data_type)
+            ),
             DataType::RestCombinator => "Vec<u8>".to_string(),
             DataType::Choose(variants) => {
                 let e = Enum {
@@ -562,15 +573,21 @@ impl Generator {
                 return Err(format!("Bit size cannot be 0{}", size));
             }
 
-            let width = if size <= 8 { 8 }
-                else if size <= 16 { 16 }
-                    else if size <= 32 { 32 }
-                        else if size <= 64 { 64 }
-                            else {  return Err(format!("Unsupported bit size {}", size)) };
+            let width = if size <= 8 {
+                8
+            } else if size <= 16 {
+                16
+            } else if size <= 32 {
+                32
+            } else if size <= 64 {
+                64
+            } else {
+                return Err(format!("Unsupported bit size {}", size));
+            };
 
             Ok((captures[1].to_string(), size, width))
         } else {
-            return Err(format!("Unknown type {}", s))
+            return Err(format!("Unknown type {}", s));
         }
     }
 
@@ -583,95 +600,113 @@ impl Generator {
             }
             Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
             Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
-            Expression::Binop(op, lh, rh) => format!("({} {} {})",
+            Expression::Binop(op, lh, rh) => format!(
+                "({} {} {})",
                 Generator::render_expression(variable_context, &*lh),
                 op,
-                Generator::render_expression(variable_context, &*rh)),
+                Generator::render_expression(variable_context, &*rh)
+            ),
         }
     }
 
-    fn parser_for_data_type(prefix: &str, field_types: &HashMap<String, DataType>,
-                            data_type: &DataType) -> Result<String, String> {
+    fn parser_for_data_type(
+        prefix: &str,
+        field_types: &HashMap<String, DataType>,
+        data_type: &DataType,
+    ) -> Result<String, String> {
         Ok(match data_type {
-            DataType::Value(ref s) => {
-                match s.as_ref() {
-                    "u8"  => "read_u8_le".to_string(),
-                    "u16" => "read_u16_le".to_string(),
-                    "u32" => "read_u32_le".to_string(),
-                    "u64" => "read_u64_le".to_string(),
-                    "i8"  => "read_i8_le".to_string(),
-                    "i16" => "read_i16_le".to_string(),
-                    "i32" => "read_i32_le".to_string(),
-                    "i64" => "read_i64_le".to_string(),
-                    "cstring" => "map_res!(many!(call!(not, 0)), |v| String::from_utf8(v))".to_string(),
-                    t => {
-                        let (sign, size, width) = Generator::parse_int_type(t)?;
+            DataType::Value(ref s) => match s.as_ref() {
+                "u8" => "read_u8_le".to_string(),
+                "u16" => "read_u16_le".to_string(),
+                "u32" => "read_u32_le".to_string(),
+                "u64" => "read_u64_le".to_string(),
+                "i8" => "read_i8_le".to_string(),
+                "i16" => "read_i16_le".to_string(),
+                "i32" => "read_i32_le".to_string(),
+                "i64" => "read_i64_le".to_string(),
+                "cstring" => "map_res!(many!(call!(not, 0)), |v| String::from_utf8(v))".to_string(),
+                t => {
+                    let (sign, size, width) = Generator::parse_int_type(t)?;
 
-                        let parser = format!("call!(read_bits_u{}, {})", width, size);
+                    let parser = format!("call!(read_bits_u{}, {})", width, size);
 
-                        if sign == "u" {
-                            parser
-                        } else {
-                            format!("map!({}, |x| x as i{})", parser, width)
-                        }
-                    },
+                    if sign == "u" {
+                        parser
+                    } else {
+                        format!("map!({}, |x| x as i{})", parser, width)
+                    }
                 }
             },
-            DataType::Message { ref name, ref args} if name == "str_utf8" => {
+            DataType::Message { ref name, ref args } if name == "str_utf8" => {
                 if args.len() != 1 {
-                    return Err(format!("Expected one argument to str_utf8, found {}", args.len()));
+                    return Err(format!(
+                        "Expected one argument to str_utf8, found {}",
+                        args.len()
+                    ));
                 }
 
-                format!("map_res!(call!(read_bytes, {} as usize), |v| String::from_utf8(v))",
-                        Generator::render_expression("", &args.get(0).unwrap()))
-            },
+                format!(
+                    "map_res!(call!(read_bytes, {} as usize), |v| String::from_utf8(v))",
+                    Generator::render_expression("", &args.get(0).unwrap())
+                )
+            }
             DataType::Message { ref name, ref args } => {
                 let fun = to_camel_case(name, true);
                 if args.is_empty() {
                     format!("{}::parse", fun)
                 } else {
-                    let args: Vec<String> = args.iter().map(|e| {
-                        let expr = Generator::render_expression("", e);
-                        // TODO: this is super hacky
-                        let var_type = field_types.get(&expr[1..]);
-                        let is_ref = var_type.map(|dt| Generator::use_ref(dt)).unwrap_or(false);
-                        if is_ref {
-                            format!("&{}", expr)
-                        } else {
-                            expr
-                        }
-                    }).collect();
+                    let args: Vec<String> = args
+                        .iter()
+                        .map(|e| {
+                            let expr = Generator::render_expression("", e);
+                            // TODO: this is super hacky
+                            let var_type = field_types.get(&expr[1..]);
+                            let is_ref = var_type.map(|dt| Generator::use_ref(dt)).unwrap_or(false);
+                            if is_ref {
+                                format!("&{}", expr)
+                            } else {
+                                expr
+                            }
+                        })
+                        .collect();
                     format!("call!({}::parse, {})", fun, args.join(", "))
                 }
-            },
+            }
             DataType::Choose(ref variants) => {
-                let vs: Vec<String> = variants.iter().map(|v| {
-                    format!("        map!(call!({}), |v| {}::{}(v))",
+                let vs: Vec<String> = variants
+                    .iter()
+                    .map(|v| {
+                        format!(
+                            "        map!(call!({}), |v| {}::{}(v))",
                             Generator::parser_for_data_type(
                                 &[prefix, &to_camel_case(&v.name, true)].join("_"),
                                 field_types,
-                                &v.data_type).unwrap(),
-                        prefix, v.name)
-                }).collect();
+                                &v.data_type
+                            )
+                            .unwrap(),
+                            prefix,
+                            v.name
+                        )
+                    })
+                    .collect();
 
                 format!("choose!(\n{}\n)", vs.join(" |\n"))
-            },
-            DataType::Array { ref data_type, ref length } => {
-                let subparser = Generator::parser_for_data_type(prefix, field_types,data_type)?;
+            }
+            DataType::Array {
+                ref data_type,
+                ref length,
+            } => {
+                let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
 
                 let l = match length {
                     Expression::Value(Value::String(_)) => {
                         return Err("Strings cannot be array lengths".to_string());
-                    },
+                    }
                     Expression::Value(Value::ByteArray(_)) => {
                         return Err("Byte arrays cannot be array lengths".to_string());
                     }
-                    Expression::Value(Value::Number(n)) => {
-                        format!("{}", n)
-                    },
-                    Expression::Variable(v) => {
-                        format!("_{} as usize", &v[1..])
-                    },
+                    Expression::Value(Value::Number(n)) => format!("{}", n),
+                    Expression::Variable(v) => format!("_{} as usize", &v[1..]),
                     expr @ Expression::Binop(..) => {
                         format!("({}) as usize", Generator::render_expression("", &expr))
                     }
@@ -683,32 +718,31 @@ impl Generator {
                 let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
                 format!("many!(call!({}))", subparser)
             }
-            DataType::RestCombinator => {
-                "rest".to_string()
-            }
+            DataType::RestCombinator => "rest".to_string(),
         })
     }
 
     fn use_ref(data_type: &DataType) -> bool {
         match data_type {
-            DataType::Value(ref v) => {
-                match v.as_ref() {
-                    "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => false,
-                    v => Generator::parse_int_type(v).is_err()
-                }
-            }
-            _ => true
+            DataType::Value(ref v) => match v.as_ref() {
+                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" => false,
+                v => Generator::parse_int_type(v).is_err(),
+            },
+            _ => true,
         }
     }
 
     fn arg_type(data_type: &DataType) -> Result<String, String> {
         Ok(match data_type {
             DataType::Value(ref v) => v.clone(),
-            DataType::Array { data_type, ..} => {
+            DataType::Array { data_type, .. } => {
                 format!("&[{}]", Generator::arg_type(&*data_type)?)
             }
             _ => {
-                return Err(format!("Data type {:?} is not supported as an argument", data_type))
+                return Err(format!(
+                    "Data type {:?} is not supported as an argument",
+                    data_type
+                ))
             }
         })
     }
@@ -717,10 +751,9 @@ impl Generator {
         match value {
             Value::String(s) => format!(r#""{}""#, s),
             Value::ByteArray(b) => {
-                let v: Vec<String> = b.iter().map(|b|
-                    format!("{}u8", b)).collect();
+                let v: Vec<String> = b.iter().map(|b| format!("{}u8", b)).collect();
                 format!("vec![{}]", v.join(", "))
-            },
+            }
             Value::Number(n) => format!("0x{:X}", n),
         }
     }
@@ -731,7 +764,10 @@ impl Generator {
             public: true,
             generics: vec!["'a".to_string()],
             args: vec!["_s0: State<'a>".to_string()],
-            return_type: Some(format!("PResult<(State<'a>, {})>", to_camel_case(&message.name, true))),
+            return_type: Some(format!(
+                "PResult<(State<'a>, {})>",
+                to_camel_case(&message.name, true)
+            )),
             body: vec![],
         };
 
@@ -739,7 +775,11 @@ impl Generator {
 
         // add arguments to the function
         for arg in &message.args {
-            fun.args.push(format!("_{}: {}", arg.name, Generator::arg_type(&arg.data_type)?));
+            fun.args.push(format!(
+                "_{}: {}",
+                arg.name,
+                Generator::arg_type(&arg.data_type)?
+            ));
 
             field_types.insert(arg.name.clone(), arg.data_type.clone());
 
@@ -770,29 +810,41 @@ impl Generator {
             let v = if let Some(ref target) = f.apply_to {
                 // TODO: support applying to arguments
                 let (i, _, tf) = io.get(&target[1..]).ok_or(format!(
-                    "Could not find stream {} for {} in {}", target, f.name, message.name))?;
+                    "Could not find stream {} for {} in {}",
+                    target, f.name, message.name
+                ))?;
 
                 if let DataType::Array { data_type, length } = &tf.data_type {
                     if let DataType::Value(ref v) = **data_type {
-                       if v == "u8" {
-                           let l = match length {
-                               Expression::Value(Value::Number(n)) => n.to_string(),
-                               Expression::Variable(s) => format!("_{}", &s[1..]),
-                               _ => unimplemented!()
-                           };
+                        if v == "u8" {
+                            let l = match length {
+                                Expression::Value(Value::Number(n)) => n.to_string(),
+                                Expression::Variable(s) => format!("_{}", &s[1..]),
+                                _ => unimplemented!(),
+                            };
 
-                           (format!("{}.range_to(..{} as usize)", i, l), "_".to_string(), f)
-                       } else {
-                           return Err(format!("Stream source {} for {} in {} is not a byte array",
-                                              target, f.name, message.name));
-                       }
+                            (
+                                format!("{}.range_to(..{} as usize)", i, l),
+                                "_".to_string(),
+                                f,
+                            )
+                        } else {
+                            return Err(format!(
+                                "Stream source {} for {} in {} is not a byte array",
+                                target, f.name, message.name
+                            ));
+                        }
                     } else {
-                        return Err(format!("Stream source {} for {} in {} is not a byte array",
-                                           target, f.name, message.name));
+                        return Err(format!(
+                            "Stream source {} for {} in {} is not a byte array",
+                            target, f.name, message.name
+                        ));
                     }
                 } else {
-                    return Err(format!("Stream source {} for {} in {} is not a byte array",
-                                       target, f.name, message.name));
+                    return Err(format!(
+                        "Stream source {} for {} in {} is not a byte array",
+                        target, f.name, message.name
+                    ));
                 }
             } else {
                 let v = (format!("_s{}", input_idx), format!("_s{}", output_idx), f);
@@ -804,7 +856,7 @@ impl Generator {
             if io.insert(&f.name[..], v).is_some() {
                 return Err(format!("duplicate field {} in {}", f.name, message.name));
             }
-        };
+        }
 
         let mut final_output = "_s0";
         for f in &message.fields {
@@ -812,19 +864,29 @@ impl Generator {
 
             if let Some(ex) = &f.value {
                 let data_type = Generator::render_data_type(&prefix, &mut vec![], &f.data_type);
-                fun.body.push(format!("let _{}: {} = ({}) as {};", f.name,
-                                      data_type, Generator::render_expression("", ex), data_type));
+                fun.body.push(format!(
+                    "let _{}: {} = ({}) as {};",
+                    f.name,
+                    data_type,
+                    Generator::render_expression("", ex),
+                    data_type
+                ));
             } else {
-                let (input, output, _) = io.get(&f.name[..])
-                    .expect("missing i/o info for field");
+                let (input, output, _) = io.get(&f.name[..]).expect("missing i/o info for field");
 
-                fun.body.push(format!("let ({}, _{}) = call!({}, {})?;", output, f.name,
-                                      input, Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?));
+                fun.body.push(format!(
+                    "let ({}, _{}) = call!({}, {})?;",
+                    output,
+                    f.name,
+                    input,
+                    Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?
+                ));
 
                 if let Some(ref constraints) = f.constraints {
-                    let cs: Vec<String> = constraints.iter().map(|c|
-                        format!("_{} == {}", f.name, Generator::render_expression("", c))
-                    ).collect();
+                    let cs: Vec<String> = constraints
+                        .iter()
+                        .map(|c| format!("_{} == {}", f.name, Generator::render_expression("", c)))
+                        .collect();
 
                     fun.body.push(format!("if !({}) {{
       return Err(protogen::Error {{ error: protogen::ErrorType::Failure, position: {}.offset * 8 + {}.bit_offset }})
@@ -837,41 +899,61 @@ impl Generator {
             }
         }
 
-        let mut construct_args: Vec<String> = message.args.iter()
+        let mut construct_args: Vec<String> = message
+            .args
+            .iter()
             .filter(|a| a.value.is_none())
             .map(|a| {
                 match a.data_type {
                     // TODO: probably need to support other stuff here
-                    DataType::Array { .. } => {
-                        format!("_{}: _{}.to_vec()", a.name, a.name)
-                    }
-                    _ => format!("_{}", a.name)
+                    DataType::Array { .. } => format!("_{}: _{}.to_vec()", a.name, a.name),
+                    _ => format!("_{}", a.name),
                 }
             })
             .collect();
 
-        construct_args.extend(message.fields.iter()
-            .filter(|f| f.value.is_none())
-            .map(|f| format!("_{}", f.name)));
+        construct_args.extend(
+            message
+                .fields
+                .iter()
+                .filter(|f| f.value.is_none())
+                .map(|f| format!("_{}", f.name)),
+        );
 
-        fun.body.push(format!("Ok(({}, {} {{ {} }}))", final_output, message_type,
-                              construct_args.join(", ")));
+        fun.body.push(format!(
+            "Ok(({}, {} {{ {} }}))",
+            final_output,
+            message_type,
+            construct_args.join(", ")
+        ));
 
         Ok(fun)
     }
 
-    fn writer_for_field(message: &Message, field_name: &str, var: &str, data_type: &DataType) -> String {
-        let vref = format!("{}{}",
-                           if Generator::use_ref(data_type) { "&" } else { "" },
-                           var);
+    fn writer_for_field(
+        message: &Message,
+        field_name: &str,
+        var: &str,
+        data_type: &DataType,
+    ) -> String {
+        let vref = format!(
+            "{}{}",
+            if Generator::use_ref(data_type) {
+                "&"
+            } else {
+                ""
+            },
+            var
+        );
 
         match data_type {
             DataType::Value(ref v) => {
                 match v.as_ref() {
                     "u8" => format!("buf.push_u8({});", vref),
                     "i8" => format!("buf.push_i8({});", vref),
-                    w @ "u16" | w @ "u32" | w @ "u64" | w @ "i16" | w @ "i32" | w @ "i64"  =>
-                        format!("buf.push_{}_le({});", w, vref),
+                    w @ "u16" | w @ "u32" | w @ "u64" | w @ "i16" | w @ "i32" | w @ "i64" => {
+                        format!("buf.push_{}_le({});", w, vref)
+                    }
                     "cstring" => format!("buf.push_bytes({});", vref),
                     "u1" => format!("buf.push_bit({} == 1);", vref),
                     v => {
@@ -880,44 +962,51 @@ impl Generator {
                                 // not really clear what to do here... does this even make sense??
                                 "unimplemented();".to_string()
                             } else {
-                                format!("for _v in 0..{} {{ buf.push_bit({} & (1 << _v) > 0) }}",
-                                        size, vref)
+                                format!(
+                                    "for _v in 0..{} {{ buf.push_bit({} & (1 << _v) > 0) }}",
+                                    size, vref
+                                )
                             }
                         } else {
                             "unimplemented!();".to_string()
                         }
-                    },
-                }
-            }
-            DataType::Array { data_type, .. } => {
-                match data_type.as_ref() {
-                    DataType::Value(v) if *v == "u8" => format!("buf.push_bytes({});", vref),
-                    dt => {
-                        format!("for v in {} {{ {} }}", vref,
-                                Generator::writer_for_field(message, field_name, "*v", dt))
                     }
                 }
+            }
+            DataType::Array { data_type, .. } => match data_type.as_ref() {
+                DataType::Value(v) if *v == "u8" => format!("buf.push_bytes({});", vref),
+                dt => format!(
+                    "for v in {} {{ {} }}",
+                    vref,
+                    Generator::writer_for_field(message, field_name, "*v", dt)
+                ),
             },
-            DataType::Message { name: ref m, ..} if m == "str_utf8" => {
+            DataType::Message { name: ref m, .. } if m == "str_utf8" => {
                 format!("buf.push_bytes({}.as_bytes());", var)
             }
-            DataType::Message { .. } => {
-                format!("({}).write_bytes(buf);", var)
-            }
-            DataType::ManyCombinator { data_type } => {
-                Generator::writer_for_field(message, field_name, var,
-                                            &DataType::Array {
-                                                data_type: data_type.clone(),
-                                                length: Expression::Value(Value::Number(0)) })
-            }
+            DataType::Message { .. } => format!("({}).write_bytes(buf);", var),
+            DataType::ManyCombinator { data_type } => Generator::writer_for_field(
+                message,
+                field_name,
+                var,
+                &DataType::Array {
+                    data_type: data_type.clone(),
+                    length: Expression::Value(Value::Number(0)),
+                },
+            ),
             DataType::RestCombinator => format!("buf.push_bytes({});", vref),
             DataType::Choose(variants) => {
-                let matches: Vec<String> = variants.iter().map(|var| {
-                    format!("        {}_{}::{}(v) => v.write_bytes(buf),",
+                let matches: Vec<String> = variants
+                    .iter()
+                    .map(|var| {
+                        format!(
+                            "        {}_{}::{}(v) => v.write_bytes(buf),",
                             to_camel_case(&message.name, true),
                             to_camel_case(&field_name, true),
-                            var.name)
-                }).collect();
+                            var.name
+                        )
+                    })
+                    .collect();
 
                 format!("match {} {{\n{}\n    }}", vref, matches.join("\n"))
             }
@@ -931,7 +1020,11 @@ impl Generator {
             if field.value.is_none() && field.apply_to.is_none() {
                 let name = format!("self._{}", field.name);
                 body.push(Generator::writer_for_field(
-                    message, &field.name, &name, &field.data_type));
+                    message,
+                    &field.name,
+                    &name,
+                    &field.data_type,
+                ));
             }
         }
 
@@ -941,14 +1034,24 @@ impl Generator {
             name: "write_bytes".to_string(),
             public: false,
             generics: vec![],
-            args: vec!["&self".to_string(), format!("{}: &mut buffer::BitBuffer", buf_name)],
+            args: vec![
+                "&self".to_string(),
+                format!("{}: &mut buffer::BitBuffer", buf_name),
+            ],
             return_type: None,
-            body
+            body,
         }
     }
 
-    fn add_field(public: bool, name: &str, data_type: &DataType,
-                 value: Option<&Expression>, st: &mut Struct, imp: &mut Impl, enums: &mut Vec<Enum>) {
+    fn add_field(
+        public: bool,
+        name: &str,
+        data_type: &DataType,
+        value: Option<&Expression>,
+        st: &mut Struct,
+        imp: &mut Impl,
+        enums: &mut Vec<Enum>,
+    ) {
         let prefix = &[&st.name[..], &to_camel_case(name, true)].join("_");
         let data_type_string = Generator::render_data_type(prefix, enums, data_type);
 
@@ -975,9 +1078,11 @@ impl Generator {
         };
 
         if let Some(v) = value {
-            getter.body.push(format!("({}) as {}",
-                                     Generator::render_expression("self.", v),
-                                     data_type_string));
+            getter.body.push(format!(
+                "({}) as {}",
+                Generator::render_expression("self.", v),
+                data_type_string
+            ));
         } else {
             st.fields.push(StructField {
                 name: format!("_{}", name),
@@ -999,8 +1104,7 @@ impl Generator {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
-        let imports: HashSet<String> = ["protogen::*".to_string()]
-            .iter().cloned().collect();
+        let imports: HashSet<String> = ["protogen::*".to_string()].iter().cloned().collect();
 
         for message in &messages {
             let mut s = Struct {
@@ -1016,13 +1120,27 @@ impl Generator {
 
             for arg in &message.args {
                 let value = arg.value.as_ref().map(|v| Expression::Value(v.clone()));
-                Generator::add_field(arg.public, &arg.name, &arg.data_type, value.as_ref(),
-                                     &mut s, &mut imp, &mut enums);
+                Generator::add_field(
+                    arg.public,
+                    &arg.name,
+                    &arg.data_type,
+                    value.as_ref(),
+                    &mut s,
+                    &mut imp,
+                    &mut enums,
+                );
             }
 
             for f in &message.fields {
-                Generator::add_field(f.public, &f.name, &f.data_type, f.value.as_ref(),
-                                     &mut s, &mut imp, &mut enums);
+                Generator::add_field(
+                    f.public,
+                    &f.name,
+                    &f.data_type,
+                    f.value.as_ref(),
+                    &mut s,
+                    &mut imp,
+                    &mut enums,
+                );
             }
 
             imp.functions.push(Generator::parse_fn(&message)?);
@@ -1038,15 +1156,17 @@ impl Generator {
                 body: vec![
                     "let mut buf = buffer::BitBuffer::new();".to_string(),
                     "self.write_bytes(&mut buf);".to_string(),
-                    "buf.into_vec()".to_string()
-                ]
+                    "buf.into_vec()".to_string(),
+                ],
             });
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
             }
 
-            impls.entry(s.name.clone()).or_insert_with(|| vec![])
+            impls
+                .entry(s.name.clone())
+                .or_insert_with(|| vec![])
                 .push(imp);
             structs.insert(s.name.clone(), s);
         }
@@ -1085,7 +1205,11 @@ impl fmt::Display for Generator {
         for message in &self.messages {
             let name = to_camel_case(&message.name, true);
             // write the struct definition
-            write!(f, "{}\n\n", self.structs.get(&name).expect("missing struct"))?;
+            write!(
+                f,
+                "{}\n\n",
+                self.structs.get(&name).expect("missing struct")
+            )?;
 
             // write any associated impls
             for imp in self.impls.get(&name).unwrap_or(&vec![]) {
