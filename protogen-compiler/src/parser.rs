@@ -712,7 +712,7 @@ inquiry_result = {
         let text = r#"
 hci_command = {
   @opcode: u16;
-  public ocf: u8 = @opcode & 0b11100000;
+  public ocf: u8 = @opcode + 5;
 }"#;
 
         assert_eq!(
@@ -739,9 +739,9 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: Some(Expression::Binop(
-                                "&".to_string(),
+                                "+".to_string(),
                                 Box::new(Expression::Variable("@opcode".to_string())),
-                                Box::new(Expression::Value(Value::Number(224)))
+                                Box::new(Expression::Value(Value::Number(5)))
                             )),
                             constraints: None,
                         },
@@ -750,20 +750,6 @@ hci_command = {
             ))
         );
     }
-
-    //    #[test]
-    //    fn test_file() {
-    //        let source = include_str!("../../protogen-examples/src/hci_message.protogen");
-    //        match source_file(source.trim().as_bytes()) {
-    //            Ok((rem, messages)) => {
-    //                assert_eq!(0, rem.len());
-    //                assert_eq!(12, messages.len());
-    //            }
-    //            Err(e) => {
-    //                debug_assert!(false, "got error: {:?}", e);
-    //            }
-    //        }
-    //    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]

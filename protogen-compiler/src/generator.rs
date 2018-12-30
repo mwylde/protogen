@@ -20,32 +20,6 @@ mod tests {
         assert_eq!("thisIsMyWord", to_camel_case("this_is_my_word", false));
     }
 
-    //    #[test]
-    //    fn bitstream() {
-    //        let b: [u8; 4] = [0b10100011, 0b11100110, 0b01101101, 10];
-    //
-    //        fn parser(i0: &[u8]) -> IResult<&[u8], ()> {
-    ////            let (_i, x) = try_parse!(i0, bits!(take_bits!(u8, 3)));
-    ////            println!("Parsed {:#b} ({:?})", x, _i);
-    ////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 6)));
-    ////            println!("Parsed {:#b} ({:?})", x, _i);
-    ////            let (_i, x) = try_parse!(_i, bits!(take_bits!(u8, 7)));
-    ////            println!("Parsed {:#b} ({:?})", x, _i);
-    //
-    //            let (_i, (x, y, z)) = do_parse!(i0,
-    //              bits!(
-    //
-    //              ))
-    //
-    //            let (_i, x) = try_parse!(_i, le_u8);
-    //            println!("Parsed {} ({:?})", x, _i);
-    //
-    //            Ok((_i, ()))
-    //        }
-    //
-    //        parser(&b[..]).unwrap();
-    //    }
-
     #[test]
     fn test_data_type() {
         fn t(prefix: &str, dt: &DataType) -> String {
@@ -144,8 +118,7 @@ mod tests {
     #[test]
     fn test_render_struct() {
         let expected = r#"
-use nom;
-use nom::*;
+use protogen::*;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct HciCommand {
@@ -165,31 +138,31 @@ impl HciCommand {
         self._ocf
     }
 
-    pub fn parse<'a>(_i0: &'a [u8], _type: u8, _with_value: u16, _public_arg: u8) -> IResult<&'a [u8], HciCommand> {
+    pub fn parse<'a>(_s0: State<'a>, _type: u8, _with_value: u16, _public_arg: u8) -> PResult<(State<'a>, HciCommand)> {
         if 0xA != _with_value {
-            return Err(nom::Err::Error(nom::Context::Code(_i0, nom::ErrorKind::Tag)));
+            return Err(protogen::Error { error: protogen::ErrorType::Failure, position: _s0.offset * 8 + _s0.bit_offset });
         }
-        let (_i1, _ocf) = try_parse!(_i0, le_u8);
-        let (_i2, _length) = try_parse!(_i1, le_u8);
+        let (_s1, _ocf) = call!(_s0, read_u8_le)?;
+        let (_s2, _length) = call!(_s1, read_u8_le)?;
         let _data: u8 = (0xA) as u8;
-        let (_i3, _message) = try_parse!(_i2, alt!(
-            count!(le_u8, 8) => {|v| HciCommand_Message::SomeMessage(v)}
-    ));
-        Ok((_i3, HciCommand { _type, _public_arg, _ocf, _length, _message }))
+        let (_s3, _message) = call!(_s2, choose!(
+            map!(call!(count!(8, call!(read_u8_le))), |v| HciCommand_Message::SomeMessage(v))
+    ))?;
+        Ok((_s3, HciCommand { _type, _public_arg, _ocf, _length, _message }))
     }
 
-    fn write_bytes(&self, buf: &mut Vec<u8>) {
-        buf.push(self._ocf);
-        buf.push(self._length);
+    fn write_bytes(&self, buf: &mut buffer::BitBuffer) {
+        buf.push_u8(self._ocf);
+        buf.push_u8(self._length);
         match &self._message {
             HciCommand_Message::SomeMessage(v) => v.write_bytes(buf),
         }
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-        let mut buf = vec![];
+        let mut buf = buffer::BitBuffer::new();
         self.write_bytes(&mut buf);
-        buf
+        buf.into_vec()
     }
 
 }
@@ -343,15 +316,6 @@ pub enum SetEventFilter_Filter {
 
         assert_eq!(expected.trim(), format!("{}", e));
     }
-    //
-    //    #[test]
-    //    fn test_end_to_end() {
-    //        let source: &str = include_str!(hci_message.protogen);
-    //        let messages = source_file(source.trim().as_bytes()).unwrap().1;
-    //
-    //        let generator = Generator::from_messages(messages).unwrap();
-    //        println!("{}", generator);
-    //    }
 
 }
 
