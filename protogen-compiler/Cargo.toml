@@ -6,6 +6,7 @@ authors = ["Micah Wylde <micah@micahw.com>"]
 [dependencies]
 regex = "^1"
 lazy_static = "^1.2"
+petgraph = "^0.4"
 
 [dependencies.nom]
 version = "^4.1"

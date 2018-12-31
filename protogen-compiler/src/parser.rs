@@ -1,3 +1,4 @@
+use intermediate::*;
 use nom::*;
 use std::str;
 use std::str::FromStr;
@@ -240,7 +241,7 @@ hci_command = {
                             value: None,
                             constraints: Some(vec![
                                 Expression::Binop(
-                                    "+".to_string(),
+                                    Op::Plus,
                                     Box::new(ex_num(0x22)),
                                     Box::new(ex_num(10))
                                 ),
@@ -526,7 +527,7 @@ hci_command = {
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
                                 length: Expression::Binop(
-                                    "/".to_string(),
+                                    Op::Divide,
                                     Box::new(ex_var("@length")),
                                     Box::new(ex_num(2))
                                 )
@@ -659,11 +660,7 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(
-                    "*".to_string(),
-                    Box::new(ex_var("@var")),
-                    Box::new(ex_num(5))
-                )
+                Expression::Binop(Op::Multiply, Box::new(ex_var("@var")), Box::new(ex_num(5)))
             ))
         );
 
@@ -672,17 +669,13 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(
-                    "*".to_string(),
-                    Box::new(ex_var("@var")),
-                    Box::new(ex_num(5))
-                )
+                Expression::Binop(Op::Multiply, Box::new(ex_var("@var")), Box::new(ex_num(5)))
             ))
         );
 
         fn var_minus_five() -> Box<Expression> {
             Box::new(Expression::Binop(
-                "-".to_string(),
+                Op::Minus,
                 Box::new(ex_var("@var")),
                 Box::new(ex_num(5)),
             ))
@@ -693,7 +686,7 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop("*".to_string(), var_minus_five(), Box::new(ex_num(6)))
+                Expression::Binop(Op::Multiply, var_minus_five(), Box::new(ex_num(6)))
             ))
         );
 
@@ -702,7 +695,7 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop("*".to_string(), Box::new(ex_num(6)), var_minus_five())
+                Expression::Binop(Op::Multiply, Box::new(ex_num(6)), var_minus_five())
             ))
         );
     }
@@ -739,7 +732,7 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
                             value: Some(Expression::Binop(
-                                "+".to_string(),
+                                Op::Plus,
                                 Box::new(Expression::Variable("@opcode".to_string())),
                                 Box::new(Expression::Value(Value::Number(5)))
                             )),
@@ -750,70 +743,6 @@ hci_command = {
             ))
         );
     }
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub enum Expression {
-    Value(Value),
-    Variable(String),
-    Binop(String, Box<Expression>, Box<Expression>),
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub enum DataType {
-    Value(String),
-    Array {
-        data_type: Box<DataType>,
-        length: Expression,
-    },
-    Message {
-        name: String,
-        args: Vec<Expression>,
-    },
-    ManyCombinator {
-        data_type: Box<DataType>,
-    },
-    RestCombinator,
-    Choose(Vec<ChooseVariant>),
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub enum Value {
-    String(String),
-    ByteArray(Vec<u8>),
-    Number(u64),
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Field {
-    pub public: bool,
-    pub variable: bool,
-    pub name: String,
-    pub apply_to: Option<String>,
-    pub data_type: DataType,
-    pub value: Option<Expression>,
-    pub constraints: Option<Vec<Expression>>,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub struct ChooseVariant {
-    pub name: String,
-    pub data_type: DataType,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-pub struct Arg {
-    pub public: bool,
-    pub name: String,
-    pub data_type: DataType,
-    pub value: Option<Value>,
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Message {
-    pub name: String,
-    pub args: Vec<Arg>,
-    pub fields: Vec<Field>,
 }
 
 fn is_symbol_char(i: u8) -> bool {
@@ -989,12 +918,12 @@ named!(
     binop<Expression>,
     ws!(do_parse!(
         lh: terminal_expression
-            >> op: map_res!(
-                alt!(tag!("-") | tag!("+") | tag!("/") | tag!("*")),
-                str::from_utf8
-            )
+            >> op: alt!(tag!("+") => {|_| Op::Plus } |
+                        tag!("-") => {|_| Op::Minus } |
+                        tag!("*") => {|_| Op::Multiply } |
+                        tag!("/") => {|_| Op::Divide })
             >> rh: expression
-            >> (Expression::Binop(op.to_string(), Box::new(lh), Box::new(rh)))
+            >> (Expression::Binop(op, Box::new(lh), Box::new(rh)))
     ))
 );
 
@@ -1007,7 +936,7 @@ named!(
 );
 
 named!(
-    expression<Expression>,
+    pub expression<Expression>,
     ws!(alt!(binop | terminal_expression))
 );
 

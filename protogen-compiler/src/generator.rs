@@ -1,7 +1,4 @@
-use parser::Expression;
-use parser::Field;
-use parser::Value;
-use parser::{DataType, Message};
+use intermediate::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -11,8 +8,6 @@ use std::str::FromStr;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::Arg;
-    use parser::{ChooseVariant, Expression, Field, Value};
 
     #[test]
     fn test_to_camel_case() {

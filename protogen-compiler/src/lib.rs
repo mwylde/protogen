@@ -1,9 +1,9 @@
 extern crate nom;
+extern crate petgraph;
 extern crate regex;
 #[macro_use]
 extern crate lazy_static;
-
-use parser::Message;
+use intermediate::*;
 use std::env;
 use std::fs;
 use std::io;
@@ -11,6 +11,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub mod generator;
+mod intermediate;
 pub mod parser;
 
 pub fn process_current_dir() -> io::Result<()> {
