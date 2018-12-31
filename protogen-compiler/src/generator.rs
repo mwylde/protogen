@@ -559,12 +559,13 @@ impl Generator {
             }
             Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
             Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
-            Expression::Binop(op, lh, rh) => format!(
+            Expression::Binary(op, lh, rh) => format!(
                 "({} {} {})",
                 Generator::render_expression(variable_context, &*lh),
                 op,
                 Generator::render_expression(variable_context, &*rh)
             ),
+            Expression::Unary(UnaryOp::Len, arg) => format!("({}).len()", arg),
         }
     }
 
@@ -666,9 +667,10 @@ impl Generator {
                     }
                     Expression::Value(Value::Number(n)) => format!("{}", n),
                     Expression::Variable(v) => format!("_{} as usize", &v[1..]),
-                    expr @ Expression::Binop(..) => {
+                    expr @ Expression::Binary(..) => {
                         format!("({}) as usize", Generator::render_expression("", &expr))
                     }
+                    Expression::Unary(..) => unimplemented!(),
                 };
 
                 format!("count!({}, call!({}))", l, subparser)

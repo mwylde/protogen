@@ -240,8 +240,8 @@ hci_command = {
                             data_type: DataType::Value("u8".to_string()),
                             value: None,
                             constraints: Some(vec![
-                                Expression::Binop(
-                                    Op::Plus,
+                                Expression::Binary(
+                                    BinOp::Plus,
                                     Box::new(ex_num(0x22)),
                                     Box::new(ex_num(10))
                                 ),
@@ -526,8 +526,8 @@ hci_command = {
                             apply_to: None,
                             data_type: DataType::Array {
                                 data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Binop(
-                                    Op::Divide,
+                                length: Expression::Binary(
+                                    BinOp::Divide,
                                     Box::new(ex_var("@length")),
                                     Box::new(ex_num(2))
                                 )
@@ -660,7 +660,11 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(Op::Multiply, Box::new(ex_var("@var")), Box::new(ex_num(5)))
+                Expression::Binary(
+                    BinOp::Multiply,
+                    Box::new(ex_var("@var")),
+                    Box::new(ex_num(5))
+                )
             ))
         );
 
@@ -669,13 +673,17 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(Op::Multiply, Box::new(ex_var("@var")), Box::new(ex_num(5)))
+                Expression::Binary(
+                    BinOp::Multiply,
+                    Box::new(ex_var("@var")),
+                    Box::new(ex_num(5))
+                )
             ))
         );
 
         fn var_minus_five() -> Box<Expression> {
-            Box::new(Expression::Binop(
-                Op::Minus,
+            Box::new(Expression::Binary(
+                BinOp::Minus,
                 Box::new(ex_var("@var")),
                 Box::new(ex_num(5)),
             ))
@@ -686,7 +694,7 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(Op::Multiply, var_minus_five(), Box::new(ex_num(6)))
+                Expression::Binary(BinOp::Multiply, var_minus_five(), Box::new(ex_num(6)))
             ))
         );
 
@@ -695,7 +703,7 @@ inquiry_result = {
             expression(text.as_bytes()),
             Ok((
                 &[b';'][..],
-                Expression::Binop(Op::Multiply, Box::new(ex_num(6)), var_minus_five())
+                Expression::Binary(BinOp::Multiply, Box::new(ex_num(6)), var_minus_five())
             ))
         );
     }
@@ -731,8 +739,8 @@ hci_command = {
                             name: "ocf".to_string(),
                             apply_to: None,
                             data_type: DataType::Value("u8".to_string()),
-                            value: Some(Expression::Binop(
-                                Op::Plus,
+                            value: Some(Expression::Binary(
+                                BinOp::Plus,
                                 Box::new(Expression::Variable("@opcode".to_string())),
                                 Box::new(Expression::Value(Value::Number(5)))
                             )),
@@ -918,12 +926,12 @@ named!(
     binop<Expression>,
     ws!(do_parse!(
         lh: terminal_expression
-            >> op: alt!(tag!("+") => {|_| Op::Plus } |
-                        tag!("-") => {|_| Op::Minus } |
-                        tag!("*") => {|_| Op::Multiply } |
-                        tag!("/") => {|_| Op::Divide })
+            >> op: alt!(tag!("+") => {|_| BinOp::Plus } |
+                        tag!("-") => {|_| BinOp::Minus } |
+                        tag!("*") => {|_| BinOp::Multiply } |
+                        tag!("/") => {|_| BinOp::Divide })
             >> rh: expression
-            >> (Expression::Binop(op, Box::new(lh), Box::new(rh)))
+            >> (Expression::Binary(op, Box::new(lh), Box::new(rh)))
     ))
 );
 

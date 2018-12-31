@@ -1,5 +1,6 @@
 // use petgraph::Graph;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -17,34 +18,67 @@ mod tests {
         assert_eq!("(20 / 10) + 5", solved.to_string());
         assert_eq!("7", solved.simplify().unwrap().to_string());
     }
+
+    #[test]
+    fn test_graph() {
+        let message: Message = message(
+            "wave = {
+  chunk_id: [u8; 4] | [b\"RIFF\"];
+  @chunk_size: u32;
+  public format: [u8; 4] | [b\"WAVE\"];
+  @data_size: u32 = @chunk_size - 8;
+  @data: [u8; @data_size];
+  public chunks: apply @data many!(subchunk());
+}
+"
+            .as_bytes(),
+        )
+        .unwrap()
+        .1;
+
+        println!("{:#?}", message.graph());
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
-pub enum Op {
+pub enum BinOp {
     Plus,
     Minus,
     Multiply,
     Divide,
 }
 
-impl fmt::Display for Op {
+impl fmt::Display for BinOp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Op::Plus => write!(f, "+"),
-            Op::Minus => write!(f, "-"),
-            Op::Multiply => write!(f, "*"),
-            Op::Divide => write!(f, "/"),
+            BinOp::Plus => write!(f, "+"),
+            BinOp::Minus => write!(f, "-"),
+            BinOp::Multiply => write!(f, "*"),
+            BinOp::Divide => write!(f, "/"),
         }
     }
 }
 
-impl Op {
-    fn inverse(&self) -> Op {
+impl BinOp {
+    pub fn inverse(&self) -> BinOp {
         match self {
-            Op::Plus => Op::Minus,
-            Op::Minus => Op::Plus,
-            Op::Multiply => Op::Divide,
-            Op::Divide => Op::Multiply,
+            BinOp::Plus => BinOp::Minus,
+            BinOp::Minus => BinOp::Plus,
+            BinOp::Multiply => BinOp::Divide,
+            BinOp::Divide => BinOp::Multiply,
+        }
+    }
+}
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
+pub enum UnaryOp {
+    Len,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            UnaryOp::Len => write!(f, "len"),
         }
     }
 }
@@ -81,14 +115,15 @@ impl fmt::Display for Value {
 pub enum Expression {
     Value(Value),
     Variable(String),
-    Binop(Op, Box<Expression>, Box<Expression>),
+    Binary(BinOp, Box<Expression>, Box<Expression>),
+    Unary(UnaryOp, Box<Expression>),
 }
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         fn print(f: &mut Formatter, expr: &Expression) -> fmt::Result {
             match expr {
-                e @ Expression::Binop(..) => write!(f, "({})", e),
+                e @ Expression::Binary(..) => write!(f, "({})", e),
                 e => write!(f, "{}", e),
             }
         }
@@ -96,11 +131,12 @@ impl fmt::Display for Expression {
         match self {
             Expression::Value(v) => v.fmt(f),
             Expression::Variable(v) => write!(f, "{}", v),
-            Expression::Binop(op, l, r) => {
+            Expression::Binary(op, l, r) => {
                 print(f, &**l)?;
                 write!(f, " {} ", op)?;
                 print(f, &**r)
             }
+            Expression::Unary(op, arg) => write!(f, "{}({})", op, arg),
         }
     }
 }
@@ -111,21 +147,21 @@ impl Expression {
         use Value::*;
 
         Ok(match self {
-            Binop(op, lh, rh) => match (op, &**lh, &**rh) {
-                (Op::Plus, Value(Number(l)), Value(Number(r))) => Value(Number(l + r)),
-                (Op::Minus, Value(Number(l)), Value(Number(r))) => Value(Number(l - r)),
-                (Op::Multiply, Value(Number(l)), Value(Number(r))) => Value(Number(l * r)),
-                (Op::Divide, Value(Number(l)), Value(Number(r))) => Value(Number(l / r)),
+            Binary(op, lh, rh) => match (op, &**lh, &**rh) {
+                (BinOp::Plus, Value(Number(l)), Value(Number(r))) => Value(Number(l + r)),
+                (BinOp::Minus, Value(Number(l)), Value(Number(r))) => Value(Number(l - r)),
+                (BinOp::Multiply, Value(Number(l)), Value(Number(r))) => Value(Number(l * r)),
+                (BinOp::Divide, Value(Number(l)), Value(Number(r))) => Value(Number(l / r)),
                 (op, Value(Number(_)), Value(r)) => {
                     return Err(format!("{} cannot be applied to {:?}", op, r))
                 }
                 (op, Value(l), _) => return Err(format!("{} cannot be applied to {:?}", op, l)),
-                (op, l @ Binop(..), r @ Binop(..)) => {
-                    Binop(*op, Box::new(l.simplify()?), Box::new(r.simplify()?))
+                (op, l @ Binary(..), r @ Binary(..)) => {
+                    Binary(*op, Box::new(l.simplify()?), Box::new(r.simplify()?))
                 }
-                (op, l @ Binop(..), _) => Binop(*op, Box::new(l.simplify()?), rh.clone()),
-                (op, _, r @ Binop(..)) => Binop(*op, lh.clone(), Box::new(r.simplify()?)),
-                _ => Binop(*op, lh.clone(), rh.clone()),
+                (op, l @ Binary(..), _) => Binary(*op, Box::new(l.simplify()?), rh.clone()),
+                (op, _, r @ Binary(..)) => Binary(*op, lh.clone(), Box::new(r.simplify()?)),
+                _ => Binary(*op, lh.clone(), rh.clone()),
             },
             v => v.clone(),
         })
@@ -155,7 +191,8 @@ impl Equation {
             match expr {
                 Expression::Value(_) => false,
                 Expression::Variable(v) => v == var,
-                Expression::Binop(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
+                Expression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
+                Expression::Unary(_, arg) => contains_var(var, arg),
             }
         }
 
@@ -187,20 +224,21 @@ impl Equation {
                         lh, rh
                     );
                 }
-                Expression::Binop(op, l, r) => {
+                Expression::Binary(op, l, r) => {
                     match (contains_var(var, &l), contains_var(var, &r)) {
                         (true, true) => return Err(format!("found two instances of var {}", var)),
                         (false, false) => panic!("found no instances of var"),
                         (true, false) => {
-                            lh = Expression::Binop(op.inverse(), Box::new(lh), r.clone());
+                            lh = Expression::Binary(op.inverse(), Box::new(lh), r.clone());
                             *l.clone()
                         }
                         (false, true) => {
-                            lh = Expression::Binop(op.inverse(), Box::new(lh), l.clone());
+                            lh = Expression::Binary(op.inverse(), Box::new(lh), l.clone());
                             *r.clone()
                         }
                     }
                 }
+                Expression::Unary(UnaryOp::Len, ..) => unimplemented!(),
             };
 
             if next == rh {
@@ -209,17 +247,6 @@ impl Equation {
 
             rh = next;
         }
-
-        unreachable!();
-
-        //        match self {
-        //            v @ Expression::Value(_) => v.clone(),
-        //            v @ Expression::Variable(_) => v.clone(),
-        //            Expression::Binop(op, lh, rh) => {
-        //
-        //
-        //            }
-        //        }
     }
 }
 
@@ -273,19 +300,73 @@ pub struct Message {
     pub fields: Vec<Field>,
 }
 
-enum Edge {
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub enum Edge {
     ApplyTo,
     Expression(Expression),
 }
 
-//fn graph(message: &Message) {
-//    let mut graph = Graph::<&str, Edge>::new();
-//
-//    for f in message.fields {
-//        graph.add_node(&f.name);
-//    }
-//
-//     for f in message.fields {
-//         if f.apply_to
-//     }
-//}
+type FieldGraph = HashMap<String, Vec<(String, Edge)>>;
+
+impl Message {
+    pub fn graph(&self) -> FieldGraph {
+        let mut graph: FieldGraph = HashMap::new();
+
+        for f in &self.fields {
+            graph.insert(f.name.clone(), vec![]);
+        }
+
+        for f in &self.fields {
+            fn handle_expr(graph: &mut FieldGraph, field: &Field, expr: &Expression, is_len: bool) {
+                fn find_vars(output: &mut Vec<String>, expr: &Expression) {
+                    match expr {
+                        Expression::Variable(v) => output.push(v.clone()),
+                        Expression::Binary(_, lh, rh) => {
+                            find_vars(output, lh);
+                            find_vars(output, rh);
+                        }
+                        _ => {}
+                    };
+                }
+
+                let mut vars = vec![];
+                find_vars(&mut vars, &expr);
+                if vars.len() > 1 {
+                    panic!("expressions with more than one variable are not yet supported");
+                }
+
+                if vars.len() == 1 {
+                    let eq = Equation {
+                        lh: expr.clone(),
+                        rh: Expression::Variable(format!("@{}", field.name)),
+                    };
+
+                    let mut expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
+
+                    if is_len {
+                        expr = Expression::Unary(UnaryOp::Len, Box::new(expr));
+                    }
+
+                    let edges = graph.get_mut(&vars[0][1..]).unwrap();
+                    edges.push((field.name.clone(), Edge::Expression(expr)));
+                }
+            }
+
+            if let Some(v) = &f.apply_to {
+                graph
+                    .get_mut(&v[1..])
+                    .unwrap()
+                    .push((f.name.clone(), Edge::ApplyTo));
+            }
+
+            if let Some(expr) = &f.value {
+                handle_expr(&mut graph, f, expr, false);
+            }
+
+            if let DataType::Array { length, .. } = &f.data_type {
+                handle_expr(&mut graph, f, length, true);
+            }
+        }
+        graph
+    }
+}
