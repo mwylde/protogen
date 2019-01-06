@@ -565,7 +565,10 @@ impl Generator {
                 op,
                 Generator::render_expression(variable_context, &*rh)
             ),
-            Expression::Unary(UnaryOp::Len, arg) => format!("({}).len()", arg),
+            Expression::Unary(UnaryOp::Len, arg) => format!(
+                "({}).len()",
+                Generator::render_expression(variable_context, &arg)
+            ),
         }
     }
 
@@ -877,7 +880,7 @@ impl Generator {
             message
                 .fields
                 .iter()
-                .filter(|f| f.value.is_none())
+                .filter(|f| f.value.is_none() && !f.variable)
                 .map(|f| format!("_{}", f.name)),
         );
 
@@ -977,9 +980,30 @@ impl Generator {
     fn write_bytes_fn(message: &Message) -> Function {
         let mut body = vec![];
 
+        let graph = message.graph();
+
         for field in &message.fields {
             if field.value.is_none() && field.apply_to.is_none() {
-                let name = format!("self._{}", field.name);
+                let name = if field.variable {
+                    let deps = graph.get(&field.name).unwrap();
+                    if deps.len() != 1 {
+                        format!(
+                            "panic!(\"expected exactly one upstream for {}, found {}\")",
+                            field.name,
+                            deps.len()
+                        )
+                    } else {
+                        match &deps[0].1 {
+                            Edge::Expression(expr) => {
+                                format!("({})", Generator::render_expression("self.", &expr))
+                            }
+                            Edge::ApplyTo => format!("(self._{}.to_vec())", deps[0].0),
+                        }
+                    }
+                } else {
+                    format!("self._{}", field.name)
+                };
+
                 body.push(Generator::writer_for_field(
                     message,
                     &field.name,
@@ -1009,6 +1033,7 @@ impl Generator {
         name: &str,
         data_type: &DataType,
         value: Option<&Expression>,
+        is_variable: bool,
         st: &mut Struct,
         imp: &mut Impl,
         enums: &mut Vec<Enum>,
@@ -1044,7 +1069,7 @@ impl Generator {
                 Generator::render_expression("self.", v),
                 data_type_string
             ));
-        } else {
+        } else if !is_variable {
             st.fields.push(StructField {
                 name: format!("_{}", name),
                 data_type: data_type_string,
@@ -1086,6 +1111,7 @@ impl Generator {
                     &arg.name,
                     &arg.data_type,
                     value.as_ref(),
+                    false,
                     &mut s,
                     &mut imp,
                     &mut enums,
@@ -1098,6 +1124,7 @@ impl Generator {
                     &f.name,
                     &f.data_type,
                     f.value.as_ref(),
+                    f.variable,
                     &mut s,
                     &mut imp,
                     &mut enums,

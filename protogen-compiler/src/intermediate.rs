@@ -336,16 +336,18 @@ impl Message {
                 }
 
                 if vars.len() == 1 {
-                    let eq = Equation {
-                        lh: expr.clone(),
-                        rh: Expression::Variable(format!("@{}", field.name)),
-                    };
-
-                    let mut expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
+                    let mut var = Expression::Variable(format!("@{}", field.name));
 
                     if is_len {
-                        expr = Expression::Unary(UnaryOp::Len, Box::new(expr));
+                        var = Expression::Unary(UnaryOp::Len, Box::new(var));
                     }
+
+                    let eq = Equation {
+                        lh: expr.clone(),
+                        rh: var,
+                    };
+
+                    let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
 
                     let edges = graph.get_mut(&vars[0][1..]).unwrap();
                     edges.push((field.name.clone(), Edge::Expression(expr)));
