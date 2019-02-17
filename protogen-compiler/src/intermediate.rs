@@ -36,7 +36,7 @@ mod tests {
         .unwrap()
         .1;
 
-        println!("{:#?}", message.graph());
+        println!("{:#?}", FieldGraph::construct(&vec![message]));
     }
 }
 
@@ -304,20 +304,62 @@ pub struct Message {
 pub enum Edge {
     ApplyTo,
     Expression(Expression),
+    Len(Expression),
 }
 
-type FieldGraph = HashMap<String, Vec<(String, Edge)>>;
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Node<'a> {
+    message: &'a str,
+    field: &'a str,
+}
 
-impl Message {
-    pub fn graph(&self) -> FieldGraph {
-        let mut graph: FieldGraph = HashMap::new();
+impl<'a> Node<'a> {
+    fn new(message: &'a str, field: &'a str) -> Node<'a> {
+        Node { message, field }
+    }
+}
 
-        for f in &self.fields {
-            graph.insert(f.name.clone(), vec![]);
-        }
+// Map of (node, edges *from* the node)
 
-        for f in &self.fields {
-            fn handle_expr(graph: &mut FieldGraph, field: &Field, expr: &Expression, is_len: bool) {
+#[derive(Debug, Eq, PartialEq)]
+struct FieldGraph<'a> {
+    map: HashMap<Node<'a>, Vec<(Node<'a>, Edge)>>,
+}
+
+impl<'a> FieldGraph<'a> {
+    pub fn outgoing_edges(&'a self, node: &'a Node) -> &'a [(Node<'a>, Edge)] {
+        self.map.get(node).map(|x| x.as_ref()).unwrap_or(&[][..])
+    }
+
+    pub fn add_edge(&'a mut self, source: Node<'a>, target: Node<'a>, edge: Edge) {
+        self.map
+            .entry(source)
+            .or_insert_with(|| vec![])
+            .push((target, edge));
+    }
+
+    pub fn construct(messages: &'a [Message]) -> FieldGraph<'a> {
+        let mut graph: FieldGraph = FieldGraph {
+            map: HashMap::new(),
+        };
+
+        for message in messages {
+            for f in &message.fields {
+                graph.map.insert(Node::new(&message.name, &f.name), vec![]);
+            }
+
+            for f in &message.fields {
+                // types of edges:
+
+                // Handle apply to edges
+                if let Some(v) = &f.apply_to {
+                    graph.add_edge(
+                        Node::new(&message.name, &v[1..]),
+                        Node::new(&message.name, &f.name),
+                        Edge::ApplyTo,
+                    );
+                }
+
                 fn find_vars(output: &mut Vec<String>, expr: &Expression) {
                     match expr {
                         Expression::Variable(v) => output.push(v.clone()),
@@ -329,44 +371,86 @@ impl Message {
                     };
                 }
 
-                let mut vars = vec![];
-                find_vars(&mut vars, &expr);
-                if vars.len() > 1 {
-                    panic!("expressions with more than one variable are not yet supported");
-                }
-
-                if vars.len() == 1 {
-                    let mut var = Expression::Variable(format!("@{}", field.name));
-
-                    if is_len {
-                        var = Expression::Unary(UnaryOp::Len, Box::new(var));
+                // handle assignment edges
+                if let Some(expr) = &f.value {
+                    let mut vars = vec![];
+                    find_vars(&mut vars, &expr);
+                    if vars.len() > 1 {
+                        panic!("expressions with more than one variable are not yet supported");
                     }
 
-                    let eq = Equation {
-                        lh: expr.clone(),
-                        rh: var,
-                    };
+                    if vars.len() == 1 {
+                        let mut var = Expression::Variable(format!("@{}", field.name));
 
-                    let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
+                        //                        if is_len {
+                        //                            var = Expression::Unary(UnaryOp::Len, Box::new(var));
+                        //                        }
 
-                    let edges = graph.get_mut(&vars[0][1..]).unwrap();
-                    edges.push((field.name.clone(), Edge::Expression(expr)));
+                        let eq = Equation {
+                            lh: expr.clone(),
+                            rh: var,
+                        };
+
+                        let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
+
+                        if vars[0].starts_with("$") {
+                            // this is a variable
+                        }
+
+                        graph.add_edge(
+                            Node::new(&message.name, &v[1..]),
+                            Node::new(&message.name, &f.name),
+                            Edge::ApplyTo,
+                        );
+
+                        let edges = graph.get_mut(&vars[0][1..]).unwrap();
+
+                        edges.push((field.name.clone(), Edge::Expression(expr)));
+                    }
                 }
-            }
 
-            if let Some(v) = &f.apply_to {
-                graph
-                    .get_mut(&v[1..])
-                    .unwrap()
-                    .push((f.name.clone(), Edge::ApplyTo));
-            }
-
-            if let Some(expr) = &f.value {
-                handle_expr(&mut graph, f, expr, false);
-            }
-
-            if let DataType::Array { length, .. } = &f.data_type {
-                handle_expr(&mut graph, f, length, true);
+                //                fn handle_expr(graph: &mut FieldGraph, field: &Field, expr: &Expression, is_len: bool) {
+                //                    fn find_vars(output: &mut Vec<String>, expr: &Expression) {
+                //                        match expr {
+                //                            Expression::Variable(v) => output.push(v.clone()),
+                //                            Expression::Binary(_, lh, rh) => {
+                //                                find_vars(output, lh);
+                //                                find_vars(output, rh);
+                //                            }
+                //                            _ => {}
+                //                        };
+                //                    }
+                //
+                //                    let mut vars = vec![];
+                //                    find_vars(&mut vars, &expr);
+                //                    if vars.len() > 1 {
+                //                        panic!("expressions with more than one variable are not yet supported");
+                //                    }
+                //
+                //                    if vars.len() == 1 {
+                //                        let mut var = Expression::Variable(format!("@{}", field.name));
+                //
+                //                        if is_len {
+                //                            var = Expression::Unary(UnaryOp::Len, Box::new(var));
+                //                        }
+                //
+                //                        let eq = Equation {
+                //                            lh: expr.clone(),
+                //                            rh: var,
+                //                        };
+                //
+                //                        let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
+                //
+                //                        let edges = graph.get_mut(&vars[0][1..]).unwrap();
+                //                        edges.push((field.name.clone(), Edge::Expression(expr)));
+                //                    }
+                //                }
+                //
+                //
+                //
+                //                if let DataType::Array { length, .. } = &f.data_type {
+                //                    handle_expr(&mut graph, f, length, true);
+                //                }
             }
         }
         graph

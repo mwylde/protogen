@@ -980,38 +980,38 @@ impl Generator {
     fn write_bytes_fn(message: &Message) -> Function {
         let mut body = vec![];
 
-        let graph = message.graph();
-
-        for field in &message.fields {
-            if field.value.is_none() && field.apply_to.is_none() {
-                let name = if field.variable {
-                    let deps = graph.get(&field.name).unwrap();
-                    if deps.len() != 1 {
-                        format!(
-                            "panic!(\"expected exactly one upstream for {}, found {}\")",
-                            field.name,
-                            deps.len()
-                        )
-                    } else {
-                        match &deps[0].1 {
-                            Edge::Expression(expr) => {
-                                format!("({})", Generator::render_expression("self.", &expr))
-                            }
-                            Edge::ApplyTo => format!("(self._{}.to_vec())", deps[0].0),
-                        }
-                    }
-                } else {
-                    format!("self._{}", field.name)
-                };
-
-                body.push(Generator::writer_for_field(
-                    message,
-                    &field.name,
-                    &name,
-                    &field.data_type,
-                ));
-            }
-        }
+        //        let graph = message.graph();
+        //
+        //        for field in &message.fields {
+        //            if field.value.is_none() && field.apply_to.is_none() {
+        //                let name = if field.variable {
+        //                    let deps = graph.get(&field.name).unwrap();
+        //                    if deps.len() != 1 {
+        //                        format!(
+        //                            "panic!(\"expected exactly one upstream for {}, found {}\")",
+        //                            field.name,
+        //                            deps.len()
+        //                        )
+        //                    } else {
+        //                        match &deps[0].1 {
+        //                            Edge::Expression(expr) => {
+        //                                format!("({})", Generator::render_expression("self.", &expr))
+        //                            }
+        //                            Edge::ApplyTo => format!("(self._{}.to_vec())", deps[0].0),
+        //                        }
+        //                    }
+        //                } else {
+        //                    format!("self._{}", field.name)
+        //                };
+        //
+        //                body.push(Generator::writer_for_field(
+        //                    message,
+        //                    &field.name,
+        //                    &name,
+        //                    &field.data_type,
+        //                ));
+        //            }
+        //        }
 
         let buf_name = if body.is_empty() { "_buf" } else { "buf" };
 
