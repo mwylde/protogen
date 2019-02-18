@@ -1,4 +1,4 @@
-use intermediate::*;
+use parser::{DataType, Expression, Field, Message, UnaryOp, Value};
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -8,6 +8,8 @@ use std::str::FromStr;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parser::Arg;
+    use parser::ChooseVariant;
 
     #[test]
     fn test_to_camel_case() {
@@ -569,6 +571,10 @@ impl Generator {
                 "({}).len()",
                 Generator::render_expression(variable_context, &arg)
             ),
+            Expression::Unary(UnaryOp::Serialize, arg) => format!(
+                "({}).to_bytes()",
+                Generator::render_expression(variable_context, &arg)
+            ),
         }
     }
 
@@ -977,8 +983,8 @@ impl Generator {
         }
     }
 
-    fn write_bytes_fn(message: &Message) -> Function {
-        let mut body = vec![];
+    fn write_bytes_fn(_message: &Message) -> Function {
+        let body = vec![];
 
         //        let graph = message.graph();
         //
