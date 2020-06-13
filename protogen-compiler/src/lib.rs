@@ -1,11 +1,7 @@
 #![allow(dead_code)]
 
-extern crate nom;
-extern crate petgraph;
-extern crate regex;
 #[macro_use]
 extern crate lazy_static;
-extern crate core;
 
 use parser::Message;
 use std::env;
@@ -44,7 +40,7 @@ pub fn process_dir(path: &Path) -> io::Result<()> {
 pub fn process_dir_to(
     path: &Path,
     out_file: &Path,
-    post_process: Option<&Fn(&str) -> String>,
+    post_process: Option<&dyn Fn(&str) -> String>,
 ) -> io::Result<()> {
     fs::create_dir_all(out_file.parent().expect("No parent for out file"))?;
     let messages = parse_dir_int(path)?;
@@ -53,7 +49,7 @@ pub fn process_dir_to(
     Ok(())
 }
 
-pub fn process_file(path: &Path, post_process: Option<&Fn(&str) -> String>) -> io::Result<()> {
+pub fn process_file(path: &Path, post_process: Option<&dyn Fn(&str) -> String>) -> io::Result<()> {
     let messages = parse_file(&path)?;
 
     let out_dir = get_out_dir()?;
@@ -114,7 +110,7 @@ fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
 fn process(
     messages: Vec<Message>,
     out_path: &Path,
-    post_process: Option<&Fn(&str) -> String>,
+    post_process: Option<&dyn Fn(&str) -> String>,
 ) -> io::Result<()> {
     // let name = path.file_stem().expect("not a file");
     // let out_file = out_dir.join(Path::new(name)).with_extension("rs");

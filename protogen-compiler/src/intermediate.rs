@@ -1,10 +1,8 @@
 // use petgraph::Graph;
 
-use nom::print_codes;
-use parser;
-use parser::DataType;
-use parser::Field;
-use parser::{BinOp, Message, UnaryOp, Value};
+use crate::parser;
+
+use parser::*;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
@@ -12,6 +10,7 @@ use std::fmt::Formatter;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser;
 
     #[test]
     fn solve_for() {

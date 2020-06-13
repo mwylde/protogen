@@ -1202,28 +1202,28 @@ named!(
 );
 
 named!(pub message<Message>,
-    do_parse!(
-      many0!(br) >>
-      name: symbol >>
-      many0!(br) >>
-      args: opt!(complete!(args)) >>
-      many0!(br) >>
-      _eq: tag!("=") >>
-      many0!(br) >>
-      fields: delimited!(tag!("{"), ws!(many0!(complete!(field))), tag!("}")) >>
-      (
-        Message {
-            name: name.trim().to_string(),
-            args: args.unwrap_or(vec![]),
-            fields,
-        }
-      )));
+do_parse!(
+  many0!(br) >>
+  name: symbol >>
+  many0!(br) >>
+  args: opt!(complete!(args)) >>
+  many0!(br) >>
+  _eq: tag!("=") >>
+  many0!(br) >>
+  fields: delimited!(tag!("{"), ws!(many0!(complete!(field))), tag!("}")) >>
+  (
+    Message {
+        name: name.trim().to_string(),
+        args: args.unwrap_or(vec![]),
+        fields,
+    }
+  )));
 
 named!(pub source_file<Vec<Message>>,
-    do_parse!(
-        many0!(br) >>
-        messages: separated_list!(complete!(many1!(br)), complete!(message)) >>
-        opt!(complete!(many0!(br))) >>
-        (
-             messages
-        )));
+do_parse!(
+    many0!(br) >>
+    messages: separated_list!(complete!(many1!(br)), complete!(message)) >>
+    opt!(complete!(many0!(br))) >>
+    (
+         messages
+    )));

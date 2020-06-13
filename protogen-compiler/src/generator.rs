@@ -1,4 +1,4 @@
-use parser::{DataType, Expression, Field, Message, UnaryOp, Value};
+use crate::parser::{DataType, Expression, Field, Message, UnaryOp, Value};
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -8,8 +8,8 @@ use std::str::FromStr;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::Arg;
-    use parser::ChooseVariant;
+    use crate::parser::Arg;
+    use crate::parser::ChooseVariant;
 
     #[test]
     fn test_to_camel_case() {
@@ -313,7 +313,6 @@ pub enum SetEventFilter_Filter {
 
         assert_eq!(expected.trim(), format!("{}", e));
     }
-
 }
 
 pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
