@@ -387,12 +387,13 @@ message = {
 
 ## Table of combinators
 
-| u<1-64> | Parses an unsigned integer with the specified number of bits; e.g., u32 will parse a 4 byte integer |
+| parser  | description |
 |-|-|
-| i<8,16,32,64> | Parses a signed integer with the specified number of bits using two's complement arithmetic |
-| [<subparser>; <len_expr>] | Parses an array of values with the specified subparser and length |
-| <message>(<params>) | Parses using the specified message parser |
-| apply(<data>) | Creates a substream from the specified data, which should be an array of bytes |
-| choose { ... } | Tries each parser in order, using the first that matches |
-| rest!() | Takes the rest of the input and returns as a byte array |
-| many!(<subparser>) | Repeatedly applies the subparser until it fails, collecting the results in an array |
+| `u<1-64>` | Parses an unsigned integer with the specified number of bits; e.g., u32 will parse a 4 byte integer |
+| `i<8,16,32,64>` | Parses a signed integer with the specified number of bits using two's complement arithmetic |
+| `[<subparser>; <len_expr>]` | Parses an array of values with the specified subparser and length |
+| `<message>(<params>)` | Parses using the specified message parser |
+| `apply(<data>)` | Creates a substream from the specified data, which should be an array of bytes |
+| `choose { ... }` | Tries each parser in order, using the first that matches |
+| `rest!()` | Takes the rest of the input and returns as a byte array |
+| `many!(<subparser>)` | Repeatedly applies the subparser until it fails, collecting the results in an array |
