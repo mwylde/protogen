@@ -85,26 +85,24 @@ fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
 fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
     let data = fs::read(path)?;
 
-    match parser::source_file(&data) {
+    return match parser::source_file(&data) {
         Ok((rest, messages)) => {
             let rest = String::from_utf8_lossy(&rest);
 
             if rest.trim().is_empty() {
-                return Ok(messages);
+                Ok(messages)
             } else {
-                return Err(io::Error::new(
+                Err(io::Error::new(
                     io::ErrorKind::Other,
                     format!("Parse error at {}", rest),
-                ));
+                ))
             }
         }
-        Err(e) => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Parse error {:?}", e),
-            ));
-        }
-    }
+        Err(e) => Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Parse error {:?}", e),
+        )),
+    };
 }
 
 fn process(

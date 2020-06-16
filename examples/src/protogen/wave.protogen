@@ -3,34 +3,44 @@
 wave = {
   chunk_id: [u8; 4] | [b"RIFF"];
   @chunk_size: u32;
-  public format: [u8; 4] | [b"WAVE"];
-  @data_size: u32 = @chunk_size - 8;
-  @data: [u8; @data_size];
-  public chunks: apply @data many!(subchunk());
-}
+  public wave_id: [u8; 4] | [b"WAVE"];
 
-subchunk = {
-  @id: [u8; 4];
-  @size: u32;
-  @data: [u8; @size];
-  public subchunk: apply @data choose {
-    FormatSubchunk = fmt_subchunk(@id) |
-    DataSubchunk = data_subchunk(@id) |
-    OtherSubchunk = other_subchunk(@id)
-  };
-}
+  // first we have the format subchunk
+  fmt_id: [u8; 3] | [b"fmt"];
+  _: u8;
+  @fmt_size: u32;
 
-fmt_subchunk ($id: [u8; 4] = b"fmt ") = {
   public audio_format: u16;
   public num_channels: u16;
   public sample_rate: u32;
   public byte_rate: u32;
   public block_align: u16;
   public bits_per_sample: u16;
+  public format_rest: [u8; @fmt_size - 16];
+
+  @data_size: u32 = (@chunk_size - @fmt_size) - 20;
+  // then the remaining chunks
+  @data: [u8; @data_size];
+  public chunks: apply @data many!(subchunk(@bits_per_sample));
 }
 
-data_subchunk ($id: [u8; 4] = b"data") = {
+subchunk($bits_per_sample: u16) = {
+  @id: [u8; 4];
+  @size: u32;
+  @data: [u8; @size];
+  public subchunk: apply @data choose {
+    U8DataSubchunk = u8_data_subchunk(@id, $bits_per_sample) |
+    U16DataSubchunk = u16_data_subchunk(@id, $bits_per_sample) |
+    OtherSubchunk = other_subchunk(@id)
+  };
+}
+
+u8_data_subchunk ($id: [u8; 4] = b"data", $bits_per_sample: u16 = 8) = {
   public data: rest!();
+}
+
+u16_data_subchunk ($id: [u8; 4] = b"data", $bits_per_sample: u16 = 16) = {
+  public data: many!(u16);
 }
 
 other_subchunk (public $id: [u8; 4]) = {
