@@ -3,16 +3,18 @@
 #[macro_use]
 extern crate lazy_static;
 
-use parser::Message;
+mod ast;
+pub mod backend;
+mod intermediate;
+pub mod parser;
+mod tests;
+
+use ast::Message;
 use std::env;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-
-pub mod generator;
-mod intermediate;
-pub mod parser;
 
 pub fn process_current_dir() -> io::Result<()> {
     process_dir(&env::current_dir()?)
@@ -112,7 +114,7 @@ fn process(
 ) -> io::Result<()> {
     // let name = path.file_stem().expect("not a file");
     // let out_file = out_dir.join(Path::new(name)).with_extension("rs");
-    let mut generated = convert_error(generator::Generator::from_messages(messages))?.to_string();
+    let mut generated = convert_error(backend::Generator::from_messages(messages))?.to_string();
     if let Some(process_fn) = post_process {
         generated = process_fn(&generated);
     }

@@ -1,8 +1,7 @@
 // use petgraph::Graph;
 
-use crate::parser;
-
-use parser::*;
+use crate::ast;
+use crate::ast::{BinOp, DataType, Field, Message, UnaryOp, Value};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
@@ -131,19 +130,19 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn from_parser(message: &str, expr: &parser::Expression) -> Expression {
+    fn from_parser(message: &str, expr: &ast::Expression) -> Expression {
         match expr {
-            parser::Expression::Value(v) => Expression::Value(v.clone()),
-            parser::Expression::Variable(field) => Expression::Variable(Ref {
+            ast::Expression::Value(v) => Expression::Value(v.clone()),
+            ast::Expression::Variable(field) => Expression::Variable(Ref {
                 message: message.to_string(),
                 field: field[1..].to_string(),
             }),
-            parser::Expression::Binary(op, lh, rh) => Expression::Binary(
+            ast::Expression::Binary(op, lh, rh) => Expression::Binary(
                 *op,
                 Box::new(Expression::from_parser(message, &*lh)),
                 Box::new(Expression::from_parser(message, &*rh)),
             ),
-            parser::Expression::Unary(op, arg) => {
+            ast::Expression::Unary(op, arg) => {
                 Expression::Unary(*op, Box::new(Expression::from_parser(message, &*arg)))
             }
         }
@@ -151,7 +150,7 @@ impl Expression {
 
     fn simplify_step(&self) -> Result<Expression, String> {
         use self::Expression::*;
-        use parser::Value::*;
+        use crate::ast::Value::*;
 
         Ok(match self {
             Binary(op, lh, rh) => match (op, &**lh, &**rh) {
