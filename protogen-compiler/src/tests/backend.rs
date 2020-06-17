@@ -105,6 +105,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_render_struct() {
         let expected = r#"
 use protogen::*;

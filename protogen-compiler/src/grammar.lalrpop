@@ -1,0 +1,212 @@
+use std::str::FromStr;
+use lalrpop_util::ParseError;
+
+use crate::ast::*;
+
+grammar;
+
+match {
+    "(" => LPAREN,
+    ")" => RPAREN,
+    "[" => LBRACKET,
+    "]" => RBRACKET,
+    "{" => LBRACE,
+    "}" => RBRACE,
+    "," => COMMA,
+    ":" => COLON,
+    ";" => SEMICOLON,
+    "|" => PIPE,
+    "@" => AT,
+    "=" => EQUALS,
+    "$" => DOLLAR,
+    "\"" => QUOTE,
+
+    "+" => PLUS,
+    "-" => MINUS,
+    "*" => TIMES,
+    "/" => DIVIDE,
+
+    "public" => PUBLIC,
+
+    "choose" => CHOOSE,
+    "apply" => APPLY,
+    "many!" => MANY,
+    "rest!" => REST,
+
+    r"0[xX][0-9A-Fa-f]+" => HEX_NUMBER,
+    r"0[bB][01]+" => BIN_NUMBER,
+    r"[0-9]+" => DEC_NUMBER,
+
+    r"[@\$][a-zA-Z_][a-zA-Z0-9_]*" => VARIABLE,
+    r"[a-zA-Z_][a-zA-Z0-9_]*" => IDENT,
+
+    r#"b"[^"]*""# => BSTRING,
+    r#""[^"]*""# => STRING,
+
+    // Skip whitespace and comments
+    r"\s*" => { },
+    r"//[^\n\r]*[\n\r]*" => { }, // `// comment`
+    r"/\*([^\*]*\*+[^\*/])*([^\*]*\*+|[^\*])*\*/" => { }, // `/* comment */`
+}
+
+// utils
+Tier<BinOp, NextTier>: Expression = {
+    <l: Tier<BinOp, NextTier>> <o:BinOp> <r:NextTier> => Expression::Binary(o, Box::new(l), Box::new(r)),
+    NextTier
+};
+
+CommaSeparated<T>: Vec<T> = {
+    <v:(<T> COMMA)*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};
+
+PipeSeparated1<T>: Vec<T> = {
+    <v:(<T> PIPE)*> <e:T> => {
+      let mut v = v;
+      v.push(e);
+      v
+    }
+};
+
+
+// language
+
+pub Protocol: Protocol = {
+    <messages:(<Message>)*> => Protocol { <> }
+}
+
+pub Message: Message = {
+    <name:IDENT> <args:MessageArgs?> EQUALS LBRACE <fields:Field*> RBRACE => Message {
+        name: name.to_string(),
+        args: args.unwrap_or_else(|| vec![]),
+        fields,
+    }
+}
+
+pub MessageArgs: Vec<Arg> = {
+    LPAREN <CommaSeparated<MessageArgDef>> RPAREN => <>
+}
+
+pub MessageArgDef: Arg = {
+    <public:PUBLIC?> <name:VARIABLE> COLON <data_type:DataType> <value: (EQUALS <Value>)?> => {
+        Arg {
+            public: public.is_some(),
+            name: name[1..].to_string(),
+            data_type,
+            value,
+        }
+    }
+}
+
+FieldName: (bool, String) = {
+    <VARIABLE> => (true, <>[1..].to_string()),
+    <IDENT> => (false, <>.to_string()),
+}
+
+pub Field: Field = {
+    <public:PUBLIC?> <name:FieldName> COLON
+    <apply_to: (APPLY <VARIABLE>)?>
+    <data_type:DataType> <value: (EQUALS <Expression>)?>
+    <constraints: (<Constraints>)?> SEMICOLON => {
+        Field {
+            public: public.is_some(),
+            variable: name.0,
+            name: name.1,
+            apply_to: apply_to.map(|v| v.to_string()),
+            data_type,
+            value,
+            constraints,
+        }
+    }
+}
+
+DataType: DataType = {
+    <id:IDENT> => DataType::Value(id.to_string()),
+
+    <id:IDENT> LPAREN <args: CommaSeparated<Expression>> RPAREN => {
+        DataType::Message { name: id.to_string(), args }
+    },
+
+    LBRACKET <dt:DataType> SEMICOLON <length:Expression> RBRACKET => {
+        DataType::Array {
+            data_type: Box::new(dt),
+            length,
+        }
+    },
+
+    CHOOSE LBRACE <PipeSeparated1<ChooseVariant>> RBRACE => {
+        DataType::Choose(<>)
+    },
+
+    // TODO: move these out of the grammar
+    MANY LPAREN <DataType> RPAREN => DataType::ManyCombinator { data_type: Box::new(<>) },
+    REST LPAREN RPAREN => DataType::RestCombinator,
+}
+
+Constraints: Vec<Expression> = {
+    PIPE LBRACKET <CommaSeparated<Expression>> RBRACKET => <>
+}
+
+ChooseVariant: ChooseVariant = <name:IDENT> EQUALS <dt:DataType> =>
+    ChooseVariant { name: name.to_string(), data_type: dt };
+
+pub Number: u64 = {
+    // TODO: handle overflow
+    <BIN_NUMBER> => u64::from_str_radix(&<>[2..], 2).unwrap(),
+    <HEX_NUMBER> => u64::from_str_radix(&<>[2..], 16).unwrap(),
+    <DEC_NUMBER> => u64::from_str(<>).unwrap(),
+}
+
+pub Value: Value = {
+    <Number> => Value::Number(<>),
+    <STRING> => Value::String(<>[1..<>.len() - 1].to_string()),
+    <BSTRING> => Value::ByteArray(<>[2..<>.len() - 1].as_bytes().to_vec()),
+}
+
+// expressions -- starting from loosest binding operators
+
+PlusMinusOp: BinOp = {
+    PLUS => BinOp::Plus,
+    MINUS => BinOp::Minus,
+};
+
+pub Expression: Expression = Tier<PlusMinusOp, Factor>;
+
+FactorOp: BinOp = {
+    TIMES => BinOp::Multiply,
+    DIVIDE => BinOp::Divide,
+};
+Factor = Tier<FactorOp, App>;
+
+UnaryOp: UnaryOp = {
+    <IDENT> =>? match <> {
+        "len" => Ok(UnaryOp::Len),
+        "serialize" => Ok(UnaryOp::Serialize),
+        _ => Err(ParseError::User { error: "Unknown function" }),
+    }
+}
+
+App: Expression = {
+  <o:UnaryOp> LPAREN <s:Expression> RPAREN => Expression::Unary(o, Box::new(s)),
+  Term,
+}
+
+Term: Expression = {
+  <Value> => Expression::Value(<>),
+  <VARIABLE> => Expression::Variable(<>.to_string()),
+//  MINUS <t:Term> => match t {
+//    Expr::Number(n) => Expr::Number(-n),
+//    t => Expr::Prim1(MonOp::Neg, Box::new(t)),
+//  },
+  LPAREN <Expression> RPAREN,
+};
+
+
+// end expressions -- tightest binding
+

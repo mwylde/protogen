@@ -153,3 +153,8 @@ pub struct Message {
     pub args: Vec<Arg>,
     pub fields: Vec<Field>,
 }
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Protocol {
+    pub messages: Vec<Message>,
+}

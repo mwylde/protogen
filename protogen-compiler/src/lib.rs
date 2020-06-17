@@ -3,6 +3,9 @@
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate lalrpop_util;
+
 mod ast;
 pub mod backend;
 mod intermediate;
@@ -85,26 +88,9 @@ fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
 }
 
 fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
-    let data = fs::read(path)?;
+    let data = fs::read_to_string(path)?;
 
-    return match parser::source_file(&data) {
-        Ok((rest, messages)) => {
-            let rest = String::from_utf8_lossy(&rest);
-
-            if rest.trim().is_empty() {
-                Ok(messages)
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Parse error at {}", rest),
-                ))
-            }
-        }
-        Err(e) => Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Parse error {:?}", e),
-        )),
-    };
+    parser::parse(&data, path.to_str().unwrap()).map(|p| p.messages)
 }
 
 fn process(
