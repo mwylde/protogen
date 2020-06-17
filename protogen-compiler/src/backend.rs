@@ -1,9 +1,11 @@
-use crate::ast::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
+
+use crate::ast::*;
+use crate::rust::*;
 
 pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
     let mut result = String::new();
@@ -24,139 +26,27 @@ pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
     result
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct StructField {
-    pub name: String,
-    pub data_type: String,
-}
-
-impl fmt::Display for StructField {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.data_type)
+fn method(target: &str, name: &str, parameters: Vec<RustExpression>) -> RustExpression {
+    RustExpression::MethodCall {
+        target: Box::new(var(target)),
+        name: name.to_string(),
+        parameters,
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Struct {
-    pub name: String,
-    pub fields: Vec<StructField>,
+fn num(d: i64) -> RustExpression {
+    RustExpression::Value(RustValue::Number(d))
 }
 
-impl fmt::Display for Struct {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
-        )?;
-        write!(f, "pub struct {} {{\n", self.name)?;
-
-        for field in &self.fields {
-            write!(f, "    {},\n", field)?;
-        }
-
-        write!(f, "}}")
-    }
+fn var(s: &str) -> RustExpression {
+    RustExpression::Value(RustValue::Variable(s.to_string()))
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct EnumVariant {
-    pub name: String,
-    pub data_type: String,
-}
-
-impl fmt::Display for EnumVariant {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}({})", self.name, self.data_type)
-    }
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Enum {
-    pub name: String,
-    pub variants: Vec<EnumVariant>,
-}
-
-impl fmt::Display for Enum {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#[allow(non_camel_case_types)]\n")?;
-        write!(
-            f,
-            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
-        )?;
-        write!(f, "pub enum {} {{\n", self.name)?;
-
-        for field in &self.variants {
-            write!(f, "    {},\n", field)?;
-        }
-
-        write!(f, "}}")
-    }
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Function {
-    pub name: String,
-    pub public: bool,
-    pub generics: Vec<String>,
-    pub args: Vec<String>,
-    pub return_type: Option<String>,
-    pub body: Vec<String>,
-}
-
-impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}fn {}{}({})",
-            if self.public { "pub " } else { "" },
-            self.name,
-            if !self.generics.is_empty() {
-                format!("<{}>", self.generics.join(", "))
-            } else {
-                String::new()
-            },
-            self.args.join(", ")
-        )?;
-
-        if let Some(t) = &self.return_type {
-            write!(f, " -> {}", t)?;
-        }
-
-        write!(f, " {{\n")?;
-
-        for l in &self.body {
-            write!(f, "    {}\n", l)?;
-        }
-
-        write!(f, "}}")
-    }
-}
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Impl {
-    pub struct_name: String,
-    pub trait_name: Option<String>,
-    pub functions: Vec<Function>,
-}
-
-impl fmt::Display for Impl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "impl ")?;
-        if let Some(t) = &self.trait_name {
-            write!(f, "{} for ", t)?;
-        }
-
-        write!(f, "{} {{\n", self.struct_name)?;
-
-        for function in &self.functions {
-            let s = format!("{}", function);
-            for l in s.split("\n") {
-                write!(f, "    {}\n", l)?;
-            }
-            write!(f, "\n")?;
-        }
-
-        write!(f, "}}")
+fn binop(op: &str, lh: RustExpression, rh: RustExpression) -> RustExpression {
+    RustExpression::BinOp {
+        op: op.to_string(),
+        lh: Box::new(lh),
+        rh: Box::new(rh),
     }
 }
 
@@ -241,29 +131,43 @@ impl Generator {
         }
     }
 
-    fn render_expression(variable_context: &str, ex: &Expression) -> String {
-        match ex {
-            Expression::Value(Value::String(s)) => format!("\"{}\"", s),
-            Expression::Value(Value::ByteArray(ba)) => {
-                let elements: Vec<String> = ba.iter().map(|b| format!("{}u8", b)).collect();
-                format!("&[{}][..]", elements.join(", "))
+    fn render_value(value: &Value) -> RustExpression {
+        match value {
+            Value::String(s) => RustExpression::Value(RustValue::String(s.clone())),
+            Value::ByteArray(ba) => {
+                let elements: Vec<RustExpression> = ba
+                    .iter()
+                    .map(|b| RustExpression::Value(RustValue::Byte(*b)))
+                    .collect();
+                RustExpression::ArrayRef(Box::new(RustExpression::Array(elements)))
             }
-            Expression::Value(Value::Number(n)) => format!("0x{:X}", n),
-            Expression::Variable(v) => format!("{}_{}", variable_context, &v[1..]),
-            Expression::Binary(op, lh, rh) => format!(
-                "({} {} {})",
-                Generator::render_expression(variable_context, &*lh),
-                op,
-                Generator::render_expression(variable_context, &*rh)
-            ),
-            Expression::Unary(UnaryOp::Len, arg) => format!(
-                "({}).len()",
-                Generator::render_expression(variable_context, &arg)
-            ),
-            Expression::Unary(UnaryOp::Serialize, arg) => format!(
-                "({}).to_bytes()",
-                Generator::render_expression(variable_context, &arg)
-            ),
+            Value::Number(n) => RustExpression::Value(RustValue::Number(*n as i64)),
+        }
+    }
+
+    fn render_expression(variable_context: &str, ex: &Expression) -> RustExpression {
+        match ex {
+            Expression::Value(v) => Self::render_value(v),
+            Expression::Variable(v) => RustExpression::Value(RustValue::Variable(format!(
+                "{}_{}",
+                variable_context,
+                &v[1..]
+            ))),
+            Expression::Binary(op, lh, rh) => RustExpression::BinOp {
+                op: format!("{}", op),
+                lh: Box::new(Generator::render_expression(variable_context, &*lh)),
+                rh: Box::new(Generator::render_expression(variable_context, &*rh)),
+            },
+            Expression::Unary(UnaryOp::Len, arg) => RustExpression::MethodCall {
+                target: Box::new(Generator::render_expression(variable_context, &arg)),
+                name: "len".to_string(),
+                parameters: vec![],
+            },
+            Expression::Unary(UnaryOp::Serialize, arg) => RustExpression::MethodCall {
+                target: Box::new(Generator::render_expression(variable_context, &arg)),
+                name: "to_bytes".to_string(),
+                parameters: vec![],
+            },
         }
     }
 
@@ -406,17 +310,6 @@ impl Generator {
         })
     }
 
-    fn render_value(value: &Value) -> String {
-        match value {
-            Value::String(s) => format!(r#""{}""#, s),
-            Value::ByteArray(b) => {
-                let v: Vec<String> = b.iter().map(|b| format!("{}u8", b)).collect();
-                format!("vec![{}]", v.join(", "))
-            }
-            Value::Number(n) => format!("0x{:X}", n),
-        }
-    }
-
     fn parse_fn(message: &Message) -> Result<Function, String> {
         let mut fun = Function {
             name: "parse".to_string(),
@@ -445,10 +338,30 @@ impl Generator {
             // if the argument has a value, we also need to add predicates at the beginning to check
             // the value matches
             if let Some(v) = &arg.value {
-                fun.body.push(
-                    format!("if {} != _{} {{
-        return Err(protogen::Error {{ error: protogen::ErrorType::Failure, position: _s0.offset * 8 + _s0.bit_offset }});\n    }}",
-                      Generator::render_value(v), arg.name));
+                fun.body.push(RustExpression::If {
+                    condition: Box::new(binop(
+                        "==",
+                        Generator::render_value(v),
+                        RustExpression::Value(RustValue::Variable(format!("_{}", arg.name))),
+                    )),
+                    true_block: Box::new(RustExpression::Return(Box::new(
+                        RustExpression::Struct {
+                            name: "protogen::Error".to_string(),
+                            fields: vec![
+                                ("error".to_string(), var("protogen::ErrorType::Failure")),
+                                (
+                                    "position".to_string(),
+                                    binop(
+                                        "+",
+                                        binop("*", method("_s0", "offset", vec![]), num(8)),
+                                        method("_s0", "bit_offset", vec![]),
+                                    ),
+                                ),
+                            ],
+                        },
+                    ))),
+                    false_block: None,
+                });
             }
         }
 

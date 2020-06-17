@@ -10,6 +10,8 @@ mod ast;
 pub mod backend;
 mod intermediate;
 pub mod parser;
+mod rust;
+
 mod tests;
 
 use ast::Message;

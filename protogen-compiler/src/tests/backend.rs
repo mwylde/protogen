@@ -2,6 +2,7 @@
 mod tests {
     use crate::ast::*;
     use crate::backend::*;
+    use crate::rust::*;
 
     #[test]
     fn test_to_camel_case() {

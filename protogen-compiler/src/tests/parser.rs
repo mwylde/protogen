@@ -220,7 +220,7 @@ hci_command = {
     #[test]
     fn field_constraints() {
         let text = " hci_command =  { \
-                    header: [u8; 3] | [b\"wtf\"]; \
+                    header: [u8; 4] | [b\"wtf\0\"]; \
                     public @ocf : u8 | [0x22 + 10, 5]; }";
 
         assert_eq!(
@@ -236,11 +236,11 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Array {
                             data_type: Box::new(DataType::Value("u8".to_string())),
-                            length: ex_num(3)
+                            length: ex_num(4)
                         },
                         value: None,
                         constraints: Some(vec![Expression::Value(Value::ByteArray(
-                            "wtf".as_bytes().to_vec()
+                            "wtf\0".as_bytes().to_vec()
                         ))]),
                     },
                     Field {
