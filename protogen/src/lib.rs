@@ -3,6 +3,7 @@ pub mod buffer;
 use std::ops::Range;
 use std::ops::RangeFrom;
 use std::ops::RangeTo;
+use std::string::FromUtf8Error;
 
 #[cfg(test)]
 mod tests {
@@ -630,6 +631,32 @@ pub fn read_bytes(state: State, n: usize) -> PResult<(State, Vec<u8>)> {
         }
 
         Ok((s, v))
+    }
+}
+
+/// Reads a c-style string (with terminating NULL byte), preserving the NULL
+pub fn read_cstring(state: State) -> PResult<(State, Vec<u8>)> {
+    let mut v = Vec::new();
+    let mut s = state;
+    loop {
+        let (s1, b) = read_u8_le(s)?;
+        s = s1;
+        v.push(b);
+        if b == 0 {
+            break;
+        }
+    }
+    Ok((s, v))
+}
+
+pub fn read_str_utf8(state: State, len: usize) -> PResult<(State, String)> {
+    let (s1, bs) = read_bytes(state: State, len);
+    match String::from_utf8(bs) {
+        Ok(res) => Ok((s1, res)),
+        Err(_) => Error {
+            error: ErrorType::Failure,
+            position: state.offset * 8 + state.bit_offset
+        },
     }
 }
 

@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use crate::ast::*;
 use crate::rust::*;
+use crate::rust::RustExpression::FunctionCall;
 
 pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
     let mut result = String::new();
@@ -42,6 +43,10 @@ fn var(s: &str) -> RustExpression {
     RustExpression::Value(RustValue::Variable(s.to_string()))
 }
 
+fn struct_name(s: String) -> (String, RustExpression) {
+    (s.clone(), RustExpression::Value(RustValue::Variable(s)))
+}
+
 fn binop(op: &str, lh: RustExpression, rh: RustExpression) -> RustExpression {
     RustExpression::BinOp {
         op: op.to_string(),
@@ -61,7 +66,7 @@ pub struct Generator {
 impl Generator {
     pub fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
-            DataType::Value(v) if v == "cstring" => "String".to_string(),
+            DataType::Value(v) if v == "cstring" => "Vec<u8>".to_string(),
             DataType::Value(v) => {
                 if let Ok((sign, _, width)) = Generator::parse_int_type(v) {
                     format!("{}{}", sign, width)
@@ -175,28 +180,57 @@ impl Generator {
         prefix: &str,
         field_types: &HashMap<String, DataType>,
         data_type: &DataType,
-    ) -> Result<String, String> {
+    ) -> Result<Box<dyn Fn(RustExpression) -> RustExpression>, String> {
+        fn f(name: &str) -> Box<dyn Fn(RustExpression) -> RustExpression> {
+            Box::new(|input| {
+                RustExpression::FunctionCall {
+                    name: name.to_string(),
+                    parameters: vec![input]
+                }
+            })
+        }
+
         Ok(match data_type {
             DataType::Value(ref s) => match s.as_ref() {
-                "u8" => "read_u8_le".to_string(),
-                "u16" => "read_u16_le".to_string(),
-                "u32" => "read_u32_le".to_string(),
-                "u64" => "read_u64_le".to_string(),
-                "i8" => "read_i8_le".to_string(),
-                "i16" => "read_i16_le".to_string(),
-                "i32" => "read_i32_le".to_string(),
-                "i64" => "read_i64_le".to_string(),
-                "cstring" => "map_res!(many!(call!(not, 0)), |v| String::from_utf8(v))".to_string(),
+                "u8" => f("read_u8_le"),
+                "u16" => f("read_u16_le"),
+                "u32" => f("read_u32_le"),
+                "u64" => f("read_u64_le"),
+                "i8" => f("read_i8_le"),
+                "i16" => f("read_i16_le"),
+                "i32" => f("read_i32_le"),
+                "i64" => f("read_i64_le"),
+                "cstring" => f("read_cstring"),
                 t => {
                     let (sign, size, width) = Generator::parse_int_type(t)?;
 
-                    let parser = format!("call!(read_bits_u{}, {})", width, size);
-
-                    if sign == "u" {
-                        parser
-                    } else {
-                        format!("map!({}, |x| x as i{})", parser, width)
-                    }
+                    Box::new(|s| {
+                        let f = RustExpression::FunctionCall {
+                            name: format!("read_bits_u{}", width),
+                            parameters: vec![s, num(size as i64)],
+                        };
+                        if sign == "u" {
+                            f
+                        } else {
+                            RustExpression::Block {
+                                expressions: vec![
+                                    RustExpression::TupleLet {
+                                        is_mut: false,
+                                        names: vec!["__s".to_string(), "__v".to_string()],
+                                        types: None,
+                                        value: Box::new(f)
+                                    },
+                                    RustExpression::Tuple(vec![
+                                        var("__s"),
+                                        RustExpression::Cast {
+                                            expression: Box::new(var("__v")),
+                                            typ: format!("i{}", width),
+                                        }]),
+                                ],
+                                terminated: false
+                            }
+                        }
+                    })
                 }
             },
             DataType::Message { ref name, ref args } if name == "str_utf8" => {
@@ -207,10 +241,13 @@ impl Generator {
                     ));
                 }
 
-                format!(
-                    "map_res!(call!(read_bytes, {} as usize), |v| String::from_utf8(v))",
-                    Generator::render_expression("", &args.get(0).unwrap())
-                )
+                |s| RustExpression::FunctionCall {
+                    name: "read_str_utf8".to_string(),
+                    parameters: vec![
+                        s,
+                        Generator::render_expression("", &args.get(0).unwrap())
+                    ],
+                }
             }
             DataType::Message { ref name, ref args } => {
                 let fun = to_camel_case(name, true);
@@ -222,7 +259,7 @@ impl Generator {
                         .map(|e| {
                             let expr = Generator::render_expression("", e);
                             // TODO: this is super hacky
-                            let var_type = field_types.get(&expr[1..]);
+                            let var_type = field_types.get(&expr);
                             let is_ref = var_type.map(|dt| Generator::use_ref(dt)).unwrap_or(false);
                             if is_ref {
                                 format!("&{}", expr)
@@ -310,24 +347,34 @@ impl Generator {
         })
     }
 
+    fn return_parse_error(input: &str) -> RustExpression {
+        RustExpression::Return(Box::new(
+            RustExpression::Struct {
+                name: "protogen::Error".to_string(),
+                fields: vec![
+                    ("error".to_string(), var("protogen::ErrorType::Failure")),
+                    (
+                        "position".to_string(),
+                        binop(
+                            "+",
+                            binop("*", method(input, "offset", vec![]), num(8)),
+                            method(input, "bit_offset", vec![]),
+                        ),
+                    ),
+                ],
+            },
+        ))
+    }
+
     fn parse_fn(message: &Message) -> Result<Function, String> {
-        let mut fun = Function {
-            name: "parse".to_string(),
-            public: true,
-            generics: vec!["'a".to_string()],
-            args: vec!["_s0: State<'a>".to_string()],
-            return_type: Some(format!(
-                "PResult<(State<'a>, {})>",
-                to_camel_case(&message.name, true)
-            )),
-            body: vec![],
-        };
+        let mut fun_args = vec!["_s0: State<'a>".to_string()];
+        let mut fun_body = vec![];
 
         let mut field_types: HashMap<String, DataType> = HashMap::new();
 
         // add arguments to the function
         for arg in &message.args {
-            fun.args.push(format!(
+            fun_args.push(format!(
                 "_{}: {}",
                 arg.name,
                 Generator::arg_type(&arg.data_type)?
@@ -338,28 +385,13 @@ impl Generator {
             // if the argument has a value, we also need to add predicates at the beginning to check
             // the value matches
             if let Some(v) = &arg.value {
-                fun.body.push(RustExpression::If {
+                fun_body.push(RustExpression::If {
                     condition: Box::new(binop(
                         "==",
                         Generator::render_value(v),
                         RustExpression::Value(RustValue::Variable(format!("_{}", arg.name))),
                     )),
-                    true_block: Box::new(RustExpression::Return(Box::new(
-                        RustExpression::Struct {
-                            name: "protogen::Error".to_string(),
-                            fields: vec![
-                                ("error".to_string(), var("protogen::ErrorType::Failure")),
-                                (
-                                    "position".to_string(),
-                                    binop(
-                                        "+",
-                                        binop("*", method("_s0", "offset", vec![]), num(8)),
-                                        method("_s0", "bit_offset", vec![]),
-                                    ),
-                                ),
-                            ],
-                        },
-                    ))),
+                    true_block: Box::new(Self::return_parse_error("_s0")),
                     false_block: None,
                 });
             }
@@ -436,50 +468,77 @@ impl Generator {
 
             if let Some(ex) = &f.value {
                 let data_type = Generator::render_data_type(&prefix, &mut vec![], &f.data_type);
-                fun.body.push(format!(
-                    "let _{}: {} = ({}) as {};",
-                    f.name,
-                    data_type,
-                    Generator::render_expression("", ex),
-                    data_type
-                ));
+                fun_body.push(
+                    RustExpression::Let {
+                        is_mut: false,
+                        name: format!("_{}", f.name),
+                        typ: Some(data_type.clone()),
+                        value: Box::new(RustExpression::Cast {
+                            expression: Box::new(Generator::render_expression("", ex)),
+                            typ: data_type,
+                        })
+                    }
+                );
             } else {
                 let (input, output, _) = io.get(&f.name[..]).expect("missing i/o info for field");
 
-                fun.body.push(format!(
-                    "let ({}, _{}) = call!({}, {})?;",
-                    output,
-                    f.name,
-                    input,
-                    Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?
-                ));
+                fun_body.push(
+                    RustExpression::TupleLet {
+                        is_mut: false,
+                        names: vec![output.clone(), format!("_{}", f.name)],
+                        types: None,
+                        value: Box::new(RustExpression::FunctionCall {
+                            name: Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?,
+                            parameters: vec![var(input)],
+                        })
+                    }
+                );
 
                 if let Some(ref constraints) = f.constraints {
-                    let cs: Vec<String> = constraints
+                    let mut cs = constraints
                         .iter()
-                        .map(|c| format!("_{} == {}", f.name, Generator::render_expression("", c)))
-                        .collect();
+                        .map(|c| binop("==",
+                                       var(&f.name),
+                                       Generator::render_expression("", c)))
+                        .into_iter();
 
-                    fun.body.push(format!("if !({}) {{
-      return Err(protogen::Error {{ error: protogen::ErrorType::Failure, position: {}.offset * 8 + {}.bit_offset }})
-    }}", cs.join(" || "), input, input));
-                }
+                    // parser guarantees we have at least one element so unwrap is safe
+                    let first = cs.next().unwrap();
 
-                if output != "_" {
-                    final_output = output;
+                    let condition = cs
+                        .fold(first, |acc, c|
+                            binop("||", acc, c));
+
+                    fun_body.push(
+                        RustExpression::If {
+                            condition: Box::new(condition),
+                            true_block: Box::new(Self::return_parse_error(input)),
+                            false_block: None,
+                        }
+                    );
+
+                    if output != "_" {
+                        final_output = output;
+                    }
                 }
             }
         }
 
-        let mut construct_args: Vec<String> = message
+        let mut construct_args: Vec<(String, RustExpression)> = message
             .args
             .iter()
             .filter(|a| a.value.is_none())
             .map(|a| {
                 match a.data_type {
                     // TODO: probably need to support other stuff here
-                    DataType::Array { .. } => format!("_{}: _{}.to_vec()", a.name, a.name),
-                    _ => format!("_{}", a.name),
+                    DataType::Array { .. } => {
+                        (format!("_{}", a.name), RustExpression::MethodCall {
+                            target: Box::new(var(&a.name)),
+                            name: "to_vec".to_string(),
+                            parameters: vec![]
+                        })
+                    },
+                    _ => struct_name(format!("_{}", a.name)),
                 }
             })
             .collect();
@@ -489,17 +548,33 @@ impl Generator {
                 .fields
                 .iter()
                 .filter(|f| f.value.is_none() && !f.variable)
-                .map(|f| format!("_{}", f.name)),
-        );
+                .map(|f| struct_name(format!("_{}", f.name))));
 
-        fun.body.push(format!(
-            "Ok(({}, {} {{ {} }}))",
-            final_output,
-            message_type,
-            construct_args.join(", ")
-        ));
+        fun_body.push(FunctionCall {
+            name: "Ok".to_string(),
+            parameters: vec![
+                var(final_output),
+                Box::new(RustExpression::Struct {
+                    name: message_type,
+                    fields: construct_args,
+                })
+            ]
+        });
 
-        Ok(fun)
+        Ok(Function {
+            name: "parse".to_string(),
+            public: true,
+            generics: vec!["'a".to_string()],
+            args: fun_args,
+            return_type: Some(format!(
+                "PResult<(State<'a>, {})>",
+                to_camel_case(&message.name, true)
+            )),
+            body: RustExpression::Block {
+                expressions: fun_body,
+                terminated: false,
+            },
+        })
     }
 
     fn writer_for_field(
@@ -632,7 +707,10 @@ impl Generator {
                 format!("{}: &mut buffer::BitBuffer", buf_name),
             ],
             return_type: None,
-            body,
+            body: RustExpression::FunctionCall {
+                name: "unimplemented!".to_string(),
+                parameters: vec![],
+            },
         }
     }
 
@@ -668,7 +746,10 @@ impl Generator {
             generics: vec![],
             args: vec!["&self".to_string()],
             return_type: Some(return_type),
-            body: vec![],
+            body: RustExpression::Block {
+                expressions: vec![],
+                terminated: false,
+            },
         };
 
         if let Some(v) = value {
@@ -749,11 +830,32 @@ impl Generator {
                 generics: vec![],
                 args: vec!["&self".to_string()],
                 return_type: Some("Vec<u8>".to_string()),
-                body: vec![
-                    "let mut buf = buffer::BitBuffer::new();".to_string(),
-                    "self.write_bytes(&mut buf);".to_string(),
-                    "buf.into_vec()".to_string(),
-                ],
+                body: RustExpression::Block {
+                    expressions: vec![
+                        RustExpression::Let {
+                            is_mut: true,
+                            name: "buf".to_string(),
+                            typ: None,
+                            value: Box::new(RustExpression::FunctionCall {
+                                name: "buffer::BitBuffer::new".to_string(),
+                                parameters: vec![],
+                            })
+                        },
+                        RustExpression::MethodCall {
+                            target: Box::new(var("self")),
+                            name: "write_bytes".to_string(),
+                            parameters: vec![
+                                var("&mut buf")
+                            ]
+                        },
+                        RustExpression::MethodCall {
+                            target: Box::new(var("buf")),
+                            name: "into_vec".to_string(),
+                            parameters: vec![]
+                        }
+                    ],
+                    terminated: false,
+                }
             });
 
             if structs.contains_key(&s.name) {

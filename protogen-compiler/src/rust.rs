@@ -1,5 +1,4 @@
 use std::fmt;
-use std::intrinsics::write_bytes;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct StructField {
@@ -117,8 +116,15 @@ pub enum RustExpression {
         terminated: bool,
     },
     Let {
+        is_mut: bool,
         name: String,
         typ: Option<String>,
+        value: Box<RustExpression>,
+    },
+    TupleLet {
+        is_mut: bool,
+        names: Vec<String>,
+        types: Option<Vec<String>>,
         value: Box<RustExpression>,
     },
     Cast {
@@ -131,6 +137,8 @@ pub enum RustExpression {
         rh: Box<RustExpression>,
     },
     Return(Box<RustExpression>),
+    Loop(Box<RustExpression>),
+    Tuple(Vec<RustExpression>),
 }
 
 impl fmt::Display for RustExpression {
@@ -189,10 +197,33 @@ impl fmt::Display for RustExpression {
                 }
                 Ok(())
             }
-            RustExpression::Let { name, typ, value } => {
-                write!(f, "let {}", name)?;
+            RustExpression::Let { is_mut, name, typ, value } => {
+                write!(f, "let ")?;
+                if is_mut {
+                    write!(f, "mut ")?;
+                }
+                write!(f, "{}", name)?;
                 if let Some(t) = typ {
                     write!(f, ": {}", t)?;
+                }
+                write!(f, " = {}", value)
+            }
+            RustExpression::TupleLet { is_mut, names, types, value } => {
+                write!(f, "let ")?;
+                if is_mut {
+                    write!(f, "mut ")?;
+                }
+                for name in names {
+                    write!(f, "{},", name)?;
+                }
+                write!(f, ")")?;
+
+                if let Some(ts) = types {
+                    write!(f, ": (")?;
+                    for t in ts {
+                        write!(f, "{},", t)?;
+                    }
+                    write!(f, ") ")?;
                 }
                 write!(f, " = {}", value)
             }
@@ -206,6 +237,16 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, "}}")
             }
+            RustExpression::Tuple(items) => {
+                write!(f, "(")?;
+                for item in items {
+                    write!(f, "{}, ", item)?;
+                }
+                write!(f, ")")
+            }
+            RustExpression::Loop(body) => {
+                write!(f, "loop {{\n{}\n}}", body)
+            }
         }
     }
 }
@@ -217,7 +258,7 @@ pub struct Function {
     pub generics: Vec<String>,
     pub args: Vec<String>,
     pub return_type: Option<String>,
-    pub body: Vec<RustExpression>,
+    pub body: RustExpression,
 }
 
 impl fmt::Display for Function {
