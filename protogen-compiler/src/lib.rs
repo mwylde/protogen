@@ -18,10 +18,9 @@ use ast::Message;
 use std::env;
 use std::fs;
 use std::io;
-use std::io::Error;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Command;
 
 pub fn process_current_dir() -> io::Result<()> {
     process_dir(&env::current_dir()?)

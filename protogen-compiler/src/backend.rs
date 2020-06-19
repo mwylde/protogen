@@ -5,7 +5,6 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::ast::*;
-use crate::rust::RustExpression::{FunctionCall, TupleLet};
 use crate::rust::*;
 
 type Parser = Box<dyn Fn(RustExpression) -> RustExpression>;
@@ -654,7 +653,7 @@ impl Generator {
                         .iter()
                         .map(|c| {
                             binop(
-                                "==",
+                                "!=",
                                 var(&format!("_{}", f.name)),
                                 Generator::render_expression("", c),
                             )
@@ -915,7 +914,7 @@ impl Generator {
             }
         }
 
-        let mut getter = Function {
+        let getter = Function {
             name: format!("get_{}", name),
             public: true,
             generics: vec![],

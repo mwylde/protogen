@@ -6,7 +6,7 @@ wave = {
   public wave_id: [u8; 4] | [b"WAVE"];
 
   // first we have the format subchunk
-  fmt_id: [u8; 4] | [b"fmt\0"];
+  fmt_id: [u8; 4] | [b"fmt "];
   @fmt_size: u32;
 
   public audio_format: u16;

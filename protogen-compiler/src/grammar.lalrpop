@@ -166,7 +166,10 @@ pub Number: u64 = {
 pub Value: Value = {
     <Number> => Value::Number(<>),
     <STRING> => Value::String(<>[1..<>.len() - 1].to_string()),
-    <BSTRING> => Value::ByteArray(<>[2..<>.len() - 1].as_bytes().to_vec()),
+    <BSTRING> =>? match crate::parser::parse_bstring(&<>[2..<>.len() - 1]) {
+        Ok(s) => Ok(Value::ByteArray(s)),
+        Err(e) => Err(ParseError::User { error: e }),
+    }
 }
 
 // expressions -- starting from loosest binding operators
