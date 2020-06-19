@@ -231,13 +231,14 @@ impl fmt::Display for RustExpression {
                 terminated,
             } => {
                 write!(f, "{{\n")?;
-                let (last, es) = expressions.split_last().unwrap();
-                for e in es {
-                    write!(f, "    {};\n", e)?;
-                }
-                write!(f, "    {}", last)?;
-                if *terminated {
-                    write!(f, ";")?;
+                if let Some((last, es)) = expressions.split_last() {
+                    for e in es {
+                        write!(f, "    {};\n", e)?;
+                    }
+                    write!(f, "    {}", last)?;
+                    if *terminated {
+                        write!(f, ";")?;
+                    }
                 }
                 write!(f, "}}\n")?;
                 Ok(())

@@ -359,7 +359,7 @@ impl Generator {
                 let expr = Generator::render_expression("", args.get(0).unwrap());
                 Box::new(move |s| RustExpression::FunctionCall {
                     name: "read_str_utf8".to_string(),
-                    parameters: vec![s, expr.clone()],
+                    parameters: vec![s, cast(expr.clone(), "usize")],
                 })
             }
             DataType::Message { ref name, ref args } => {
@@ -912,6 +912,8 @@ impl Generator {
             } else {
                 body.push(expr);
             }
+        } else if public {
+            unimplemented!("public variables are not yet supported");
         }
 
         let getter = Function {
