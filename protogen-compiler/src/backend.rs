@@ -5,8 +5,10 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::ast::*;
+use crate::rust::RustExpression::{FunctionCall, TupleLet};
 use crate::rust::*;
-use crate::rust::RustExpression::FunctionCall;
+
+type Parser = Box<dyn Fn(RustExpression) -> RustExpression>;
 
 pub fn to_camel_case(s: &str, initial_cap: bool) -> String {
     let mut result = String::new();
@@ -35,6 +37,13 @@ fn method(target: &str, name: &str, parameters: Vec<RustExpression>) -> RustExpr
     }
 }
 
+fn field(target: RustExpression, name: &str) -> RustExpression {
+    RustExpression::Field {
+        target: Box::new(target),
+        name: name.to_string(),
+    }
+}
+
 fn num(d: i64) -> RustExpression {
     RustExpression::Value(RustValue::Number(d))
 }
@@ -47,12 +56,121 @@ fn struct_name(s: String) -> (String, RustExpression) {
     (s.clone(), RustExpression::Value(RustValue::Variable(s)))
 }
 
+fn cast(expr: RustExpression, typ: &str) -> RustExpression {
+    RustExpression::Cast {
+        expression: Box::new(expr),
+        typ: typ.to_string(),
+    }
+}
+
 fn binop(op: &str, lh: RustExpression, rh: RustExpression) -> RustExpression {
     RustExpression::BinOp {
         op: op.to_string(),
         lh: Box::new(lh),
         rh: Box::new(rh),
     }
+}
+
+fn let_(is_mut: bool, name: &str, value: RustExpression) -> RustExpression {
+    RustExpression::Let {
+        is_mut,
+        name: name.to_string(),
+        typ: None,
+        value: Box::new(value),
+    }
+}
+
+fn qm(e: RustExpression) -> RustExpression {
+    RustExpression::Postfix("?", Box::new(e))
+}
+
+fn ok(e: RustExpression) -> RustExpression {
+    RustExpression::FunctionCall {
+        name: "Ok".to_string(),
+        parameters: vec![e],
+    }
+}
+
+fn assign(lh: &str, rh: RustExpression) -> RustExpression {
+    RustExpression::Assign(Box::new(var(lh)), Box::new(rh))
+}
+
+fn count(subparser: Parser, n: RustExpression) -> Parser {
+    Box::new(move |s| RustExpression::Block {
+        expressions: vec![
+            let_(true, "s", s),
+            let_(true, "v", var("vec![]")),
+            RustExpression::ForIn {
+                i: Box::new(var("_")),
+                iter: Box::new(RustExpression::Range(Box::new(num(0)), Box::new(n.clone()))),
+                body: Box::new(RustExpression::Block {
+                    expressions: vec![
+                        RustExpression::TupleLet {
+                            is_mut: false,
+                            names: vec!["s1".to_string(), "item".to_string()],
+                            types: None,
+                            value: Box::new(qm(subparser(var("s")))),
+                        },
+                        RustExpression::Assign(Box::new(var("s")), Box::new(var("s1"))),
+                        method("v", "push", vec![var("item")]),
+                    ],
+                    terminated: true,
+                }),
+            },
+            RustExpression::FunctionCall {
+                name: "Ok".to_string(),
+                parameters: vec![RustExpression::Tuple(vec![var("s"), var("v")])],
+            },
+        ],
+        terminated: false,
+    })
+}
+
+fn many(subparser: Parser) -> Parser {
+    /*
+    let mut s = {s};
+    let mut v = vec![];
+    loop {
+        match {subparser}(s) {
+            Ok((s1, r)) => {
+                v.push(r);
+                s = s1;
+            }
+            Err => break;
+        }
+    }
+    Ok((s, v))
+     */
+    Box::new(move |s| RustExpression::Block {
+        expressions: vec![
+            let_(true, "s", s),
+            let_(true, "v", var("vec![]")),
+            RustExpression::Loop(Box::new(RustExpression::Match(
+                Box::new(subparser(var("s"))),
+                vec![
+                    (
+                        Destructurer::TupleStruct("Ok".to_string(), vec!["(s1, r)".to_string()]),
+                        RustExpression::Block {
+                            expressions: vec![
+                                method("v", "push", vec![var("r")]),
+                                RustExpression::Assign(Box::new(var("s")), Box::new(var("s1"))),
+                            ],
+                            terminated: true,
+                        },
+                    ),
+                    (
+                        Destructurer::TupleStruct("Err".to_string(), vec!["_".to_string()]),
+                        RustExpression::Break,
+                    ),
+                ],
+            ))),
+            RustExpression::FunctionCall {
+                name: "Ok".to_string(),
+                parameters: vec![RustExpression::Tuple(vec![var("s"), var("v")])],
+            },
+        ],
+        terminated: false,
+    })
 }
 
 pub struct Generator {
@@ -176,17 +294,15 @@ impl Generator {
         }
     }
 
-    fn parser_for_data_type(
-        prefix: &str,
-        field_types: &HashMap<String, DataType>,
-        data_type: &DataType,
-    ) -> Result<Box<dyn Fn(RustExpression) -> RustExpression>, String> {
-        fn f(name: &str) -> Box<dyn Fn(RustExpression) -> RustExpression> {
-            Box::new(|input| {
-                RustExpression::FunctionCall {
-                    name: name.to_string(),
-                    parameters: vec![input]
-                }
+    fn parser_for_data_type<'a>(
+        prefix: &'a str,
+        field_types: &'a HashMap<String, DataType>,
+        data_type: &'a DataType,
+    ) -> Result<Parser, String> {
+        fn f(name: &'static str) -> Box<dyn Fn(RustExpression) -> RustExpression> {
+            Box::new(move |input| RustExpression::FunctionCall {
+                name: name.to_string(),
+                parameters: vec![input],
             })
         }
 
@@ -204,7 +320,7 @@ impl Generator {
                 t => {
                     let (sign, size, width) = Generator::parse_int_type(t)?;
 
-                    Box::new(|s| {
+                    Box::new(move |s| {
                         let f = RustExpression::FunctionCall {
                             name: format!("read_bits_u{}", width),
                             parameters: vec![s, num(size as i64)],
@@ -218,16 +334,17 @@ impl Generator {
                                         is_mut: false,
                                         names: vec!["__s".to_string(), "__v".to_string()],
                                         types: None,
-                                        value: Box::new(f)
+                                        value: Box::new(f),
                                     },
                                     RustExpression::Tuple(vec![
                                         var("__s"),
                                         RustExpression::Cast {
                                             expression: Box::new(var("__v")),
                                             typ: format!("i{}", width),
-                                        }]),
+                                        },
+                                    ]),
                                 ],
-                                terminated: false
+                                terminated: false,
                             }
                         }
                     })
@@ -240,56 +357,93 @@ impl Generator {
                         args.len()
                     ));
                 }
-
-                |s| RustExpression::FunctionCall {
+                let expr = Generator::render_expression("", args.get(0).unwrap());
+                Box::new(move |s| RustExpression::FunctionCall {
                     name: "read_str_utf8".to_string(),
-                    parameters: vec![
-                        s,
-                        Generator::render_expression("", &args.get(0).unwrap())
-                    ],
-                }
+                    parameters: vec![s, expr.clone()],
+                })
             }
             DataType::Message { ref name, ref args } => {
                 let fun = to_camel_case(name, true);
-                if args.is_empty() {
-                    format!("{}::parse", fun)
-                } else {
-                    let args: Vec<String> = args
-                        .iter()
-                        .map(|e| {
-                            let expr = Generator::render_expression("", e);
-                            // TODO: this is super hacky
-                            let var_type = field_types.get(&expr);
-                            let is_ref = var_type.map(|dt| Generator::use_ref(dt)).unwrap_or(false);
-                            if is_ref {
-                                format!("&{}", expr)
-                            } else {
-                                expr
-                            }
-                        })
-                        .collect();
-                    format!("call!({}::parse, {})", fun, args.join(", "))
-                }
-            }
-            DataType::Choose(ref variants) => {
-                let vs: Vec<String> = variants
+                let parameters: Vec<RustExpression> = args
                     .iter()
-                    .map(|v| {
-                        format!(
-                            "        map!(call!({}), |v| {}::{}(v))",
-                            Generator::parser_for_data_type(
-                                &[prefix, &to_camel_case(&v.name, true)].join("_"),
-                                field_types,
-                                &v.data_type
-                            )
-                            .unwrap(),
-                            prefix,
-                            v.name
-                        )
+                    .map(|e| {
+                        let expr = Generator::render_expression("", e);
+                        let is_ref = match &expr {
+                            RustExpression::Value(RustValue::Variable(var)) => {
+                                // TODO: find a better way to handle variables
+                                field_types
+                                    .get(&var[1..])
+                                    .map(|dt| Generator::use_ref(dt))
+                                    .unwrap_or(true)
+                            }
+                            _ => true,
+                        };
+
+                        if is_ref {
+                            RustExpression::Ref(Box::new(expr))
+                        } else {
+                            expr
+                        }
                     })
                     .collect();
 
-                format!("choose!(\n{}\n)", vs.join(" |\n"))
+                Box::new(move |s| {
+                    let mut ps = vec![s];
+                    ps.extend_from_slice(&parameters);
+                    RustExpression::FunctionCall {
+                        name: format!("{}::parse", fun),
+                        parameters: ps,
+                    }
+                })
+            }
+            DataType::Choose(ref variants) => {
+                let mut v_ps = vec![];
+                for v in variants {
+                    v_ps.push((
+                        v.name.clone(),
+                        Self::parser_for_data_type(
+                            &[prefix, &to_camel_case(&v.name, true)].join("_"),
+                            field_types,
+                            &v.data_type,
+                        )?,
+                    ));
+                }
+
+                let prefix = prefix.to_string();
+
+                Box::new(move |s| {
+                    let mut choose = Self::return_parse_error(s.clone());
+                    for (name, parser) in v_ps.iter().rev() {
+                        choose = RustExpression::Match(
+                            Box::new(parser(s.clone())),
+                            vec![
+                                (
+                                    Destructurer::TupleStruct(
+                                        "Ok".to_string(),
+                                        vec!["(__s, r)".to_string()],
+                                    ),
+                                    ok(RustExpression::Tuple(vec![
+                                        var("__s"),
+                                        RustExpression::FunctionCall {
+                                            name: format!("{}::{}", prefix, name),
+                                            parameters: vec![var("r")],
+                                        },
+                                    ])),
+                                ),
+                                (
+                                    Destructurer::TupleStruct(
+                                        "Err".to_string(),
+                                        vec!["_".to_string()],
+                                    ),
+                                    choose,
+                                ),
+                            ],
+                        );
+                    }
+
+                    choose
+                })
             }
             DataType::Array {
                 ref data_type,
@@ -297,28 +451,29 @@ impl Generator {
             } => {
                 let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
 
-                let l = match length {
+                let len = match length {
                     Expression::Value(Value::String(_)) => {
                         return Err("Strings cannot be array lengths".to_string());
                     }
                     Expression::Value(Value::ByteArray(_)) => {
                         return Err("Byte arrays cannot be array lengths".to_string());
                     }
-                    Expression::Value(Value::Number(n)) => format!("{}", n),
-                    Expression::Variable(v) => format!("_{} as usize", &v[1..]),
-                    expr @ Expression::Binary(..) => {
-                        format!("({}) as usize", Generator::render_expression("", &expr))
-                    }
+                    Expression::Value(Value::Number(n)) => num(*n as i64),
+                    Expression::Variable(v) => var(&format!("_{}", &v[1..])),
+                    expr @ Expression::Binary(..) => Generator::render_expression("", &expr),
                     Expression::Unary(..) => unimplemented!(),
                 };
 
-                format!("count!({}, call!({}))", l, subparser)
+                count(subparser, len)
             }
             DataType::ManyCombinator { ref data_type } => {
                 let subparser = Generator::parser_for_data_type(prefix, field_types, data_type)?;
-                format!("many!(call!({}))", subparser)
+                many(subparser)
             }
-            DataType::RestCombinator => "rest".to_string(),
+            DataType::RestCombinator => Box::new(|s| RustExpression::FunctionCall {
+                name: "rest".to_string(),
+                parameters: vec![s],
+            }),
         })
     }
 
@@ -347,23 +502,26 @@ impl Generator {
         })
     }
 
-    fn return_parse_error(input: &str) -> RustExpression {
-        RustExpression::Return(Box::new(
-            RustExpression::Struct {
-                name: "protogen::Error".to_string(),
-                fields: vec![
-                    ("error".to_string(), var("protogen::ErrorType::Failure")),
-                    (
-                        "position".to_string(),
-                        binop(
-                            "+",
-                            binop("*", method(input, "offset", vec![]), num(8)),
-                            method(input, "bit_offset", vec![]),
-                        ),
+    fn return_parse_error(input: RustExpression) -> RustExpression {
+        let error = RustExpression::Struct {
+            name: "protogen::Error".to_string(),
+            fields: vec![
+                ("error".to_string(), var("protogen::ErrorType::Failure")),
+                (
+                    "position".to_string(),
+                    binop(
+                        "+",
+                        binop("*", field(input.clone(), "offset"), num(8)),
+                        field(input, "bit_offset"),
                     ),
-                ],
-            },
-        ))
+                ),
+            ],
+        };
+
+        RustExpression::Return(Box::new(RustExpression::FunctionCall {
+            name: "Err".to_string(),
+            parameters: vec![error],
+        }))
     }
 
     fn parse_fn(message: &Message) -> Result<Function, String> {
@@ -391,7 +549,7 @@ impl Generator {
                         Generator::render_value(v),
                         RustExpression::Value(RustValue::Variable(format!("_{}", arg.name))),
                     )),
-                    true_block: Box::new(Self::return_parse_error("_s0")),
+                    true_block: Box::new(Self::return_parse_error(var("_s0"))),
                     false_block: None,
                 });
             }
@@ -468,54 +626,51 @@ impl Generator {
 
             if let Some(ex) = &f.value {
                 let data_type = Generator::render_data_type(&prefix, &mut vec![], &f.data_type);
-                fun_body.push(
-                    RustExpression::Let {
-                        is_mut: false,
-                        name: format!("_{}", f.name),
-                        typ: Some(data_type.clone()),
-                        value: Box::new(RustExpression::Cast {
-                            expression: Box::new(Generator::render_expression("", ex)),
-                            typ: data_type,
-                        })
-                    }
-                );
+                fun_body.push(RustExpression::Let {
+                    is_mut: false,
+                    name: format!("_{}", f.name),
+                    typ: Some(data_type.clone()),
+                    value: Box::new(RustExpression::Cast {
+                        expression: Box::new(Generator::render_expression("", ex)),
+                        typ: data_type,
+                    }),
+                });
             } else {
                 let (input, output, _) = io.get(&f.name[..]).expect("missing i/o info for field");
 
-                fun_body.push(
-                    RustExpression::TupleLet {
-                        is_mut: false,
-                        names: vec![output.clone(), format!("_{}", f.name)],
-                        types: None,
-                        value: Box::new(RustExpression::FunctionCall {
-                            name: Generator::parser_for_data_type(&prefix, &field_types, &f.data_type)?,
-                            parameters: vec![var(input)],
-                        })
-                    }
-                );
+                fun_body.push(RustExpression::TupleLet {
+                    is_mut: false,
+                    names: vec![output.clone(), format!("_{}", f.name)],
+                    types: None,
+                    value: Box::new(qm(Generator::parser_for_data_type(
+                        &prefix,
+                        &field_types,
+                        &f.data_type,
+                    )?(var(input)))),
+                });
 
                 if let Some(ref constraints) = f.constraints {
                     let mut cs = constraints
                         .iter()
-                        .map(|c| binop("==",
-                                       var(&f.name),
-                                       Generator::render_expression("", c)))
+                        .map(|c| {
+                            binop(
+                                "==",
+                                var(&format!("_{}", f.name)),
+                                Generator::render_expression("", c),
+                            )
+                        })
                         .into_iter();
 
                     // parser guarantees we have at least one element so unwrap is safe
                     let first = cs.next().unwrap();
 
-                    let condition = cs
-                        .fold(first, |acc, c|
-                            binop("||", acc, c));
+                    let condition = cs.fold(first, |acc, c| binop("||", acc, c));
 
-                    fun_body.push(
-                        RustExpression::If {
-                            condition: Box::new(condition),
-                            true_block: Box::new(Self::return_parse_error(input)),
-                            false_block: None,
-                        }
-                    );
+                    fun_body.push(RustExpression::If {
+                        condition: Box::new(condition),
+                        true_block: Box::new(Self::return_parse_error(var(input))),
+                        false_block: None,
+                    });
 
                     if output != "_" {
                         final_output = output;
@@ -531,13 +686,14 @@ impl Generator {
             .map(|a| {
                 match a.data_type {
                     // TODO: probably need to support other stuff here
-                    DataType::Array { .. } => {
-                        (format!("_{}", a.name), RustExpression::MethodCall {
-                            target: Box::new(var(&a.name)),
+                    DataType::Array { .. } => (
+                        format!("_{}", a.name),
+                        RustExpression::MethodCall {
+                            target: Box::new(var(&format!("_{}", a.name))),
                             name: "to_vec".to_string(),
-                            parameters: vec![]
-                        })
-                    },
+                            parameters: vec![],
+                        },
+                    ),
                     _ => struct_name(format!("_{}", a.name)),
                 }
             })
@@ -548,18 +704,16 @@ impl Generator {
                 .fields
                 .iter()
                 .filter(|f| f.value.is_none() && !f.variable)
-                .map(|f| struct_name(format!("_{}", f.name))));
+                .map(|f| struct_name(format!("_{}", f.name))),
+        );
 
-        fun_body.push(FunctionCall {
-            name: "Ok".to_string(),
-            parameters: vec![
-                var(final_output),
-                Box::new(RustExpression::Struct {
-                    name: message_type,
-                    fields: construct_args,
-                })
-            ]
-        });
+        fun_body.push(ok(RustExpression::Tuple(vec![
+            var(final_output),
+            RustExpression::Struct {
+                name: message_type,
+                fields: construct_args,
+            },
+        ])));
 
         Ok(Function {
             name: "parse".to_string(),
@@ -661,7 +815,7 @@ impl Generator {
     }
 
     fn write_bytes_fn(_message: &Message) -> Function {
-        let body = vec![];
+        let body: Vec<RustExpression> = vec![];
 
         //        let graph = message.graph();
         //
@@ -740,6 +894,27 @@ impl Generator {
             }
         };
 
+        let mut body = vec![];
+
+        if let Some(v) = value {
+            body.push(RustExpression::Cast {
+                expression: Box::new(Generator::render_expression("self.", v)),
+                typ: data_type_string,
+            });
+        } else if !is_variable {
+            st.fields.push(StructField {
+                name: format!("_{}", name),
+                data_type: data_type_string,
+            });
+
+            let expr = var(&format!("self._{}", name));
+            if use_ref {
+                body.push(RustExpression::Ref(Box::new(expr)));
+            } else {
+                body.push(expr);
+            }
+        }
+
         let mut getter = Function {
             name: format!("get_{}", name),
             public: true,
@@ -747,28 +922,10 @@ impl Generator {
             args: vec!["&self".to_string()],
             return_type: Some(return_type),
             body: RustExpression::Block {
-                expressions: vec![],
+                expressions: body,
                 terminated: false,
             },
         };
-
-        if let Some(v) = value {
-            getter.body.push(format!(
-                "({}) as {}",
-                Generator::render_expression("self.", v),
-                data_type_string
-            ));
-        } else if !is_variable {
-            st.fields.push(StructField {
-                name: format!("_{}", name),
-                data_type: data_type_string,
-            });
-            if use_ref {
-                getter.body.push(format!("&self._{}", name));
-            } else {
-                getter.body.push(format!("self._{}", name));
-            }
-        }
 
         if public {
             imp.functions.push(getter);
@@ -839,23 +996,21 @@ impl Generator {
                             value: Box::new(RustExpression::FunctionCall {
                                 name: "buffer::BitBuffer::new".to_string(),
                                 parameters: vec![],
-                            })
+                            }),
                         },
                         RustExpression::MethodCall {
                             target: Box::new(var("self")),
                             name: "write_bytes".to_string(),
-                            parameters: vec![
-                                var("&mut buf")
-                            ]
+                            parameters: vec![var("&mut buf")],
                         },
                         RustExpression::MethodCall {
                             target: Box::new(var("buf")),
                             name: "into_vec".to_string(),
-                            parameters: vec![]
-                        }
+                            parameters: vec![],
+                        },
                     ],
                     terminated: false,
-                }
+                },
             });
 
             if structs.contains_key(&s.name) {

@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct StructField {
     pub name: String,
     pub data_type: String,
@@ -12,7 +12,7 @@ impl fmt::Display for StructField {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Struct {
     pub name: String,
     pub fields: Vec<StructField>,
@@ -34,7 +34,7 @@ impl fmt::Display for Struct {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct EnumVariant {
     pub name: String,
     pub data_type: String,
@@ -46,7 +46,7 @@ impl fmt::Display for EnumVariant {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Enum {
     pub name: String,
     pub variants: Vec<EnumVariant>,
@@ -69,7 +69,7 @@ impl fmt::Display for Enum {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum RustValue {
     Number(i64),
     Byte(u8),
@@ -88,11 +88,39 @@ impl fmt::Display for RustValue {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+pub enum Destructurer {
+    Struct(String, Vec<String>),
+    TupleStruct(String, Vec<String>),
+}
+
+impl fmt::Display for Destructurer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Destructurer::Struct(name, fields) => {
+                write!(f, "{} {{\n", name)?;
+                for n in fields {
+                    write!(f, "    {},\n", n)?;
+                }
+                write!(f, "}}")
+            }
+            Destructurer::TupleStruct(name, fields) => {
+                write!(f, "{} (", name)?;
+                for n in fields {
+                    write!(f, "{}, ", n)?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub enum RustExpression {
     Value(RustValue),
     Array(Vec<RustExpression>),
     ArrayRef(Box<RustExpression>),
+    Range(Box<RustExpression>, Box<RustExpression>),
     Struct {
         name: String,
         fields: Vec<(String, RustExpression)>,
@@ -105,6 +133,10 @@ pub enum RustExpression {
         target: Box<RustExpression>,
         name: String,
         parameters: Vec<RustExpression>,
+    },
+    Field {
+        target: Box<RustExpression>,
+        name: String,
     },
     If {
         condition: Box<RustExpression>,
@@ -127,6 +159,7 @@ pub enum RustExpression {
         types: Option<Vec<String>>,
         value: Box<RustExpression>,
     },
+    Assign(Box<RustExpression>, Box<RustExpression>),
     Cast {
         expression: Box<RustExpression>,
         typ: String,
@@ -138,7 +171,16 @@ pub enum RustExpression {
     },
     Return(Box<RustExpression>),
     Loop(Box<RustExpression>),
+    ForIn {
+        i: Box<RustExpression>,
+        iter: Box<RustExpression>,
+        body: Box<RustExpression>,
+    },
     Tuple(Vec<RustExpression>),
+    Ref(Box<RustExpression>),
+    Postfix(&'static str, Box<RustExpression>),
+    Match(Box<RustExpression>, Vec<(Destructurer, RustExpression)>),
+    Break,
 }
 
 impl fmt::Display for RustExpression {
@@ -152,7 +194,7 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, "]")
             }
-            RustExpression::ArrayRef(a) => write!(f, "&[{}][..]", a),
+            RustExpression::ArrayRef(a) => write!(f, "&{}[..]", a),
             RustExpression::FunctionCall { name, parameters } => {
                 write!(f, "{}(", name)?;
                 for p in parameters {
@@ -171,6 +213,7 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, ")")
             }
+            RustExpression::Field { target, name } => write!(f, "({}).{}", target, name),
             RustExpression::If {
                 condition,
                 true_block,
@@ -187,6 +230,7 @@ impl fmt::Display for RustExpression {
                 expressions,
                 terminated,
             } => {
+                write!(f, "{{\n")?;
                 let (last, es) = expressions.split_last().unwrap();
                 for e in es {
                     write!(f, "    {};\n", e)?;
@@ -195,11 +239,17 @@ impl fmt::Display for RustExpression {
                 if *terminated {
                     write!(f, ";")?;
                 }
+                write!(f, "}}\n")?;
                 Ok(())
             }
-            RustExpression::Let { is_mut, name, typ, value } => {
+            RustExpression::Let {
+                is_mut,
+                name,
+                typ,
+                value,
+            } => {
                 write!(f, "let ")?;
-                if is_mut {
+                if *is_mut {
                     write!(f, "mut ")?;
                 }
                 write!(f, "{}", name)?;
@@ -208,11 +258,17 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, " = {}", value)
             }
-            RustExpression::TupleLet { is_mut, names, types, value } => {
+            RustExpression::TupleLet {
+                is_mut,
+                names,
+                types,
+                value,
+            } => {
                 write!(f, "let ")?;
-                if is_mut {
+                if *is_mut {
                     write!(f, "mut ")?;
                 }
+                write!(f, "(")?;
                 for name in names {
                     write!(f, "{},", name)?;
                 }
@@ -227,6 +283,7 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, " = {}", value)
             }
+            RustExpression::Assign(to, from) => write!(f, "{} = {}", to, from),
             RustExpression::Cast { expression, typ } => write!(f, "{} as {}", expression, typ),
             RustExpression::BinOp { op, lh, rh } => write!(f, "({}) {} ({})", lh, op, rh),
             RustExpression::Return(e) => write!(f, "return {}", e),
@@ -244,14 +301,26 @@ impl fmt::Display for RustExpression {
                 }
                 write!(f, ")")
             }
-            RustExpression::Loop(body) => {
-                write!(f, "loop {{\n{}\n}}", body)
+            RustExpression::Loop(body) => write!(f, "loop {{\n{}\n}}", body),
+            RustExpression::Ref(e) => write!(f, "&{}", e),
+            RustExpression::Postfix(op, expr) => write!(f, "{}{}", expr, op),
+            RustExpression::Range(from, to) => write!(f, "({})..({})", from, to),
+            RustExpression::ForIn { i, iter, body } => {
+                write!(f, "for {} in {} {{\n{}\n}}", i, iter, body)
             }
+            RustExpression::Match(target, variants) => {
+                write!(f, "match {} {{\n", target)?;
+                for (d, b) in variants {
+                    write!(f, "    {} => {},\n", d, b)?;
+                }
+                write!(f, "}}")
+            }
+            RustExpression::Break => write!(f, "break"),
         }
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
     pub public: bool,
@@ -280,17 +349,14 @@ impl fmt::Display for Function {
             write!(f, " -> {}", t)?;
         }
 
-        write!(f, " {{\n")?;
-
-        for l in &self.body {
-            write!(f, "    {}\n", l)?;
+        match &self.body {
+            RustExpression::Block { .. } => write!(f, "\n{}\n", self.body),
+            _ => write!(f, " {{\n{}\n}}", self.body),
         }
-
-        write!(f, "}}")
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Impl {
     pub struct_name: String,
     pub trait_name: Option<String>,

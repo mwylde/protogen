@@ -18,8 +18,10 @@ use ast::Message;
 use std::env;
 use std::fs;
 use std::io;
+use std::io::Error;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::{Command, Output};
 
 pub fn process_current_dir() -> io::Result<()> {
     process_dir(&env::current_dir()?)
@@ -108,6 +110,13 @@ fn process(
     }
 
     fs::write(&out_path, generated)?;
+
+    if let Err(_) = Command::new("rustfmt")
+        .arg(out_path.to_str().unwrap())
+        .output()
+    {
+        eprintln!("failed to run rustfmt, output will not be formatted")
+    }
 
     Ok(())
 }
