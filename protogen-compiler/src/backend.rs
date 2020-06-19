@@ -544,7 +544,7 @@ impl Generator {
             if let Some(v) = &arg.value {
                 fun_body.push(RustExpression::If {
                     condition: Box::new(binop(
-                        "==",
+                        "!=",
                         Generator::render_value(v),
                         RustExpression::Value(RustValue::Variable(format!("_{}", arg.name))),
                     )),
@@ -670,10 +670,10 @@ impl Generator {
                         true_block: Box::new(Self::return_parse_error(var(input))),
                         false_block: None,
                     });
+                }
 
-                    if output != "_" {
-                        final_output = output;
-                    }
+                if output != "_" {
+                    final_output = output;
                 }
             }
         }

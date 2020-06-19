@@ -1,6 +1,8 @@
 use crate::wave::Subchunk_Subchunk;
 use rodio::buffer::SamplesBuffer;
 use rodio::Source;
+use std::thread::sleep;
+use std::time::Duration;
 
 #[allow(dead_code)]
 mod tcp;
@@ -37,4 +39,6 @@ pub fn main() {
     };
 
     rodio::play_raw(&device, buffer.convert_samples());
+
+    sleep(Duration::from_secs(5));
 }

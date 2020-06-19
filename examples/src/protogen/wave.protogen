@@ -17,7 +17,7 @@ wave = {
   public bits_per_sample: u16;
   public format_rest: [u8; @fmt_size - 16];
 
-  @data_size: u32 = (@chunk_size - @fmt_size) - 20;
+  @data_size: u32 = (@chunk_size - @fmt_size) - 12;
   // then the remaining chunks
   @data: [u8; @data_size];
   public chunks: apply @data many!(subchunk(@bits_per_sample));
