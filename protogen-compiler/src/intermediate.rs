@@ -2,19 +2,19 @@
 
 use crate::ast;
 use crate::ast::{BinOp, DataType, Field, Message, UnaryOp, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::grammar::{ExpressionParser, MessageParser};
+    use crate::ast::Protocol;
+    use crate::parser::grammar::{ExpressionParser, MessageParser, ProtocolParser};
 
     #[test]
-    #[ignore]
     fn solve_for() {
-        let pexpr = ExpressionParser::new().parse("(@var - 5) * 10;").unwrap();
+        let pexpr = ExpressionParser::new().parse("(@var - 5) * 10").unwrap();
         let lh = Expression::from_parser("message", &pexpr);
         let rh = Expression::Value(Value::Number(20));
 
@@ -27,75 +27,137 @@ mod tests {
 
     #[test]
     fn test_graph() {
-        let mut messages = vec![];
-
-        messages.push(
-            MessageParser::new()
-                .parse(
-                    "wave = {
-  chunk_id: [u8; 4] | [b\"RIFF\"];
+        let protocol: Protocol = ProtocolParser::new()
+            .parse(
+                r#"
+wave = {
+  chunk_id: [u8; 4] | [b"RIFF"];
   @chunk_size: u32;
-  public format: [u8; 4] | [b\"WAVE\"];
-  @data_size: u32 = @chunk_size - 8;
-  @data: [u8; @data_size];
-  public chunks: apply @data many!(subchunk());
-}
-",
-                )
-                .unwrap(),
-        );
+  public wave_id: [u8; 4] | [b"WAVE"];
 
-        messages.push(
-            MessageParser::new()
-                .parse(
-                    "subchunk = {
-  @id: [u8; 4];
-  @size: u32;
-  @data: [u8; @size];
-  public subchunk: apply @data choose {
-    FormatSubchunk = fmt_subchunk(@id) |
-    DataSubchunk = data_subchunk(@id)
-  };
-}
-",
-                )
-                .unwrap(),
-        );
+  // first we have the format subchunk
+  fmt_id: [u8; 4] | [b"fmt "];
+  @fmt_size: u32;
 
-        messages.push(
-            MessageParser::new()
-                .parse(
-                    "fmt_subchunk ($id: [u8; 4] = b\"fmt \") = {
   public audio_format: u16;
   public num_channels: u16;
   public sample_rate: u32;
   public byte_rate: u32;
   public block_align: u16;
   public bits_per_sample: u16;
-}
-",
-                )
-                .unwrap(),
-        );
+  public format_rest: [u8; @fmt_size - 16];
 
-        messages.push(
-            MessageParser::new()
-                .parse(
-                    "data_subchunk ($id: [u8; 4] = b\"data\") = {
+  @data_size: u32 = (@chunk_size - @fmt_size) - 12;
+  // then the remaining chunks
+  @data: [u8; @data_size];
+  public chunks: apply @data many!(subchunk(@bits_per_sample));
+}
+
+subchunk($bits_per_sample: u16) = {
+  @id: [u8; 4];
+  @size: u32;
+  @data: [u8; @size];
+  public subchunk: apply @data choose {
+    U8DataSubchunk = u8_data_subchunk(@id) |
+    U16DataSubchunk = u16_data_subchunk(@id) |
+    OtherSubchunk = other_subchunk(@id)
+  };
+}
+
+u8_data_subchunk ($id: [u8; 4] = b"data") = {
   public data: rest!();
 }
-",
-                )
-                .unwrap(),
-        );
 
-        for c in find_constraints(&messages).unwrap() {
+u16_data_subchunk ($id: [u8; 4] = b"data") = {
+  public data: many!(u16);
+}
+
+other_subchunk (public $id: [u8; 4]) = {
+  public data: rest!();
+}
+"#,
+            )
+            .unwrap();
+
+        let constraints = find_constraints(&protocol.messages).unwrap();
+
+        for c in &constraints {
             println!("{:15} | {}", c.0.to_string(), c.1);
         }
+
+        let mut c_map = HashMap::new();
+        for (r, c) in &constraints {
+            c_map.entry(r.clone()).or_insert(vec![]).push(c.clone());
+        }
+
+        let complete: HashSet<Ref> = protocol
+            .messages
+            .iter()
+            .flat_map(|m| {
+                let name = m.name.clone();
+                m.fields
+                    .iter()
+                    .filter(|f| !f.variable)
+                    .map(move |f| ref_field(&name, f))
+            })
+            .collect();
+
+        let result = expr_for_field(
+            &Ref {
+                message: "wave".to_string(),
+                field: "chunk_size".to_string(),
+            },
+            &c_map,
+            &complete,
+        )
+        .unwrap();
+        println!("RESULT = {:?}", result);
+    }
+
+    #[test]
+    fn test_expr_for_field() {
+        let a = Ref {
+            message: "msg".to_string(),
+            field: "a".to_string(),
+        };
+        let b = Ref {
+            message: "msg".to_string(),
+            field: "b".to_string(),
+        };
+        let c = Ref {
+            message: "msg".to_string(),
+            field: "c".to_string(),
+        };
+
+        let mut constraints = HashMap::new();
+        let mut complete = HashSet::new();
+        complete.insert(a.clone());
+
+        constraints.insert(
+            b.clone(),
+            vec![Expression::Binary(
+                BinOp::Plus,
+                Box::new(Expression::Variable(a.clone())),
+                Box::new(Expression::Value(Value::Number(15))),
+            )],
+        );
+
+        constraints.insert(
+            c.clone(),
+            vec![Expression::Binary(
+                BinOp::Minus,
+                Box::new(Expression::Variable(b.clone())),
+                Box::new(Expression::Value(Value::Number(12))),
+            )],
+        );
+
+        let result = expr_for_field(&c, &constraints, &complete).unwrap();
+
+        println!("{:?}", result);
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Ref {
     message: String,
     field: String,
@@ -117,7 +179,7 @@ impl fmt::Display for Ref {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub enum Expression {
     Value(Value),
     Variable(Ref),
@@ -180,6 +242,21 @@ impl Expression {
             expr = next;
         }
         Ok(expr)
+    }
+
+    pub fn replace(&self, rf: &Ref, rep: &Expression) -> Expression {
+        match self {
+            Expression::Variable(var) if var == rf => rep.clone(),
+            Expression::Variable(var) => Expression::Variable(var.clone()),
+            Expression::Binary(op, lh, rh) => Expression::Binary(
+                *op,
+                Box::new(lh.replace(rf, rep)),
+                Box::new(rh.replace(rf, rep)),
+            ),
+            Expression::Unary(op, arg) => Expression::Unary(*op, Box::new(arg.replace(rf, rep))),
+            Expression::Match(_, _) => unimplemented!(),
+            ex => ex.clone(),
+        }
     }
 }
 
@@ -335,17 +412,15 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
 
                         if vars.is_empty() {
                             cs.push((this, expr.simplify()?));
-                        } else if vars.len() > 1 {
-                            return Err(format!(
-                                "Found multiple variables in {}; this is not yet supported",
-                                this
-                            ));
                         } else {
                             let eq = Equation {
                                 lh: Expression::Variable(this),
                                 rh: expr,
                             };
-                            cs.push((vars[0].clone(), eq.solve_for(&vars[0])?.simplify()?));
+
+                            for v in vars {
+                                cs.push((v.clone(), eq.solve_for(&v)?.simplify()?));
+                            }
                         }
                     }
                 }
@@ -359,17 +434,13 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                 let mut vars = vec![];
                 find_vars(&mut vars, &expr);
 
-                if vars.len() > 1 {
-                    return Err(format!(
-                        "Found multiple variables in {}; this is not yet supported",
-                        this
-                    ));
-                } else if !vars.is_empty() {
-                    let eq = Equation {
-                        lh: Expression::Unary(UnaryOp::Len, Box::new(Expression::Variable(this))),
-                        rh: expr,
-                    };
-                    cs.push((vars[0].clone(), eq.solve_for(&vars[0])?.simplify()?));
+                let eq = Equation {
+                    lh: Expression::Unary(UnaryOp::Len, Box::new(Expression::Variable(this))),
+                    rh: expr,
+                };
+
+                for v in vars {
+                    cs.push((v.clone(), eq.solve_for(&v)?.simplify()?));
                 }
             }
 
@@ -454,12 +525,64 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
     Ok(cs)
 }
 
+fn ref_field(message: &str, field: &Field) -> Ref {
+    Ref {
+        message: message.to_string(),
+        field: field.name.to_string(),
+    }
+}
+
+fn expr_for_field(
+    field: &Ref,
+    cs: &HashMap<Ref, Vec<Expression>>,
+    complete: &HashSet<Ref>,
+) -> Result<Expression, String> {
+    if complete.contains(&field) {
+        return Ok(Expression::Variable(field.clone()));
+    }
+
+    let mut visited = HashSet::new();
+    let mut queue: Vec<Expression> = cs.get(&field).map(|v| v.to_vec()).unwrap_or(vec![]);
+
+    let mut steps = 10;
+    while !queue.is_empty() && steps > 0 {
+        steps -= 1;
+        let c = queue.pop().unwrap();
+        if visited.contains(&c) {
+            // we're in a loop
+            continue;
+        }
+
+        println!("{:?}", c);
+
+        visited.insert(c.clone());
+
+        // if all variables in this expression are complete, we're done
+        let mut vars = vec![];
+        find_vars(&mut vars, &c);
+        vars.retain(|r| !complete.contains(r));
+        if vars.is_empty() {
+            return Ok(c);
+        }
+
+        // otherwise, we need to try to expand the expression, so pick a variable and replace it
+        // with all possible replacements. if there are none, we're done
+        for v in vars {
+            for replacement in cs.get(&v).unwrap_or(&vec![]) {
+                queue.push(c.replace(&v, &replacement));
+            }
+        }
+    }
+
+    Err(format!("couldn't produce"))
+}
+
 // Map of (node, edges *from* the node)
 
-#[derive(Debug, Eq, PartialEq)]
-struct FieldGraph<'a> {
-    map: HashMap<Node<'a>, Vec<(Node<'a>, Edge)>>,
-}
+// #[derive(Debug, Eq, PartialEq)]
+// struct FieldGraph<'a> {
+//     map: HashMap<Node<'a>, Vec<(Node<'a>, Edge)>>,
+// }
 
 //impl<'a> FieldGraph<'a> {
 //    pub fn outgoing_edges(&'a self, node: &'a Node) -> &'a [(Node<'a>, Edge)] {
