@@ -11,7 +11,7 @@ mod tests {
     use super::*;
     use crate::ast::Protocol;
     use crate::backend::Generator;
-    use crate::parser::grammar::{ExpressionParser, MessageParser, ProtocolParser};
+    use crate::parser::grammar::{ExpressionParser, ProtocolParser};
 
     #[test]
     fn solve_for() {

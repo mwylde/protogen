@@ -329,10 +329,15 @@ pub struct Function {
     pub args: Vec<String>,
     pub return_type: Option<String>,
     pub body: RustExpression,
+    pub annotations: Vec<String>,
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for annotation in &self.annotations {
+            write!(f, "#[{}]\n", annotation)?;
+        }
+
         write!(
             f,
             "{}fn {}{}({})",

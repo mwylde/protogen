@@ -1,7 +1,6 @@
 extern crate protogen_compiler;
 
 use std::env;
-use std::path::Path;
 
 fn main() {
     let mut path = env::current_dir().unwrap();

@@ -15,7 +15,6 @@ mod rust;
 mod tests;
 
 use crate::ast::Protocol;
-use ast::Message;
 use std::env;
 use std::fs;
 use std::io;

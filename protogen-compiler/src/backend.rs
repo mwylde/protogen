@@ -719,6 +719,8 @@ impl Generator {
                 expressions: fun_body,
                 terminated: false,
             },
+            // TODO: This shouldn't be necessary
+            annotations: vec!["allow(unused_variables)".to_string()],
         })
     }
 
@@ -886,6 +888,7 @@ impl Generator {
                 expressions: body,
                 terminated: true,
             },
+            annotations: vec![],
         })
     }
 
@@ -894,7 +897,6 @@ impl Generator {
         name: &str,
         data_type: &DataType,
         value: Option<&Expression>,
-        is_variable: bool,
         st: &mut Struct,
         imp: &mut Impl,
         enums: &mut Vec<Enum>,
@@ -941,6 +943,7 @@ impl Generator {
                 expressions: body,
                 terminated: false,
             },
+            annotations: vec![],
         };
 
         if public {
@@ -976,7 +979,6 @@ impl Generator {
                     &arg.name,
                     &arg.data_type,
                     value.as_ref(),
-                    false,
                     &mut s,
                     &mut imp,
                     &mut enums,
@@ -989,7 +991,6 @@ impl Generator {
                     &f.name,
                     &f.data_type,
                     f.value.as_ref(),
-                    f.variable,
                     &mut s,
                     &mut imp,
                     &mut enums,
@@ -1032,6 +1033,7 @@ impl Generator {
                             ],
                             terminated: false,
                         },
+                        annotations: vec![],
                     });
                 }
                 Err(err) => {

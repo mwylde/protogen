@@ -1,14 +1,12 @@
-use protogen::buffer::BitBuffer;
 include!(concat!(env!("OUT_DIR"), "/wave.rs"));
 
 #[cfg(test)]
 mod tests {
     use crate::wave::{Subchunk, Subchunk_Subchunk, U16DataSubchunk, Wave};
-    use protogen::buffer::BitBuffer;
 
     #[test]
     pub fn test() {
-        let wave = Wave {
+        let _wave = Wave {
             _chunk_id: b"RIFF".to_vec(),
             _wave_id: b"WAVE".to_vec(),
             _fmt_id: b"fmt ".to_vec(),
@@ -33,7 +31,7 @@ mod tests {
     }
 }
 
-pub fn subchunk_to_vec(subchunk: &Subchunk, buf: &mut BitBuffer) {}
+//pub fn subchunk_to_vec(subchunk: &Subchunk, buf: &mut BitBuffer) {}
 
 // pub fn to_vec(wav: &Wave, buf: &mut BitBuffer) {
 //     buf.push_bytes(&wav._chunk_id);
