@@ -75,6 +75,23 @@ mod tests {
     }
 
     #[test]
+    fn test_read_bit() {
+        let buf = vec![13u8];
+        let mut s = State::from_slice(&buf);
+        let mut bits = vec![];
+        for _ in 0..8 {
+            let (s1, b) = read_bit(s).unwrap();
+            bits.push(b);
+            s = s1;
+        }
+
+        assert_eq!(
+            bits,
+            vec![false, false, false, false, true, true, false, true]
+        );
+    }
+
+    #[test]
     fn test_read_bits_u8() {
         let buf = vec![100u8, 200u8];
         let state = State::from_slice(&buf);
@@ -366,6 +383,10 @@ read_bits_width!(read_bits_u8, u8);
 read_bits_width!(read_bits_u16, u16);
 read_bits_width!(read_bits_u32, u32);
 read_bits_width!(read_bits_u64, u64);
+
+pub fn read_bit(state: State) -> PResult<(State, bool)> {
+    read_bits_u8(state, 1).map(|(s, r)| (s, r == 1))
+}
 
 pub fn read_u8_le(state: State) -> PResult<(State, u8)> {
     expect(state, 8)?;

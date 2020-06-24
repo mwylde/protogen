@@ -285,7 +285,7 @@ impl fmt::Display for RustExpression {
                 write!(f, " = {}", value)
             }
             RustExpression::Assign(to, from) => write!(f, "{} = {}", to, from),
-            RustExpression::Cast { expression, typ } => write!(f, "{} as {}", expression, typ),
+            RustExpression::Cast { expression, typ } => write!(f, "({}) as {}", expression, typ),
             RustExpression::BinOp { op, lh, rh } => write!(f, "({}) {} ({})", lh, op, rh),
             RustExpression::Return(e) => write!(f, "return {}", e),
             RustExpression::Struct { name, fields } => {

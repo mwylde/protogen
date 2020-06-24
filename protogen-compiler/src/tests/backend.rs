@@ -168,73 +168,75 @@ pub enum HciCommand_Message {
 
         assert_eq!(
             expected.trim(),
-            Generator::from_messages(vec![Message {
-                name: "hci_command".to_string(),
-                args: vec![
-                    Arg {
-                        public: false,
-                        name: "type".to_string(),
-                        data_type: DataType::Value("u8".to_string()),
-                        value: None
-                    },
-                    Arg {
-                        public: false,
-                        name: "with_value".to_string(),
-                        data_type: DataType::Value("u16".to_string()),
-                        value: Some(Value::Number(10u64)),
-                    },
-                    Arg {
-                        public: true,
-                        name: "public_arg".to_string(),
-                        data_type: DataType::Value("u8".to_string()),
-                        value: None,
-                    }
-                ],
-                fields: vec![
-                    Field {
-                        public: true,
-                        variable: true,
-                        name: "ocf".to_string(),
-                        apply_to: None,
-                        data_type: DataType::Value("u8".to_string()),
-                        value: None,
-                        constraints: None
-                    },
-                    Field {
-                        public: false,
-                        variable: false,
-                        name: "length".to_string(),
-                        apply_to: None,
-                        data_type: DataType::Value("u8".to_string()),
-                        value: None,
-                        constraints: None
-                    },
-                    Field {
-                        public: false,
-                        variable: false,
-                        name: "data".to_string(),
-                        apply_to: None,
-                        data_type: DataType::Value("u8".to_string()),
-                        value: Some(Expression::Value(Value::Number(10))),
-                        constraints: None
-                    },
-                    Field {
-                        public: false,
-                        variable: false,
-                        name: "message".to_string(),
-                        apply_to: None,
-                        data_type: DataType::Choose(vec![ChooseVariant {
-                            name: "SomeMessage".to_string(),
-                            data_type: DataType::Array {
-                                data_type: Box::new(DataType::Value("u8".to_string())),
-                                length: Expression::Value(Value::Number(8)),
-                            },
-                        }]),
-                        value: None,
-                        constraints: None,
-                    },
-                ],
-            }])
+            Generator::from_protocol(Protocol {
+                messages: vec![Message {
+                    name: "hci_command".to_string(),
+                    args: vec![
+                        Arg {
+                            public: false,
+                            name: "type".to_string(),
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None
+                        },
+                        Arg {
+                            public: false,
+                            name: "with_value".to_string(),
+                            data_type: DataType::Value("u16".to_string()),
+                            value: Some(Value::Number(10u64)),
+                        },
+                        Arg {
+                            public: true,
+                            name: "public_arg".to_string(),
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None,
+                        }
+                    ],
+                    fields: vec![
+                        Field {
+                            public: true,
+                            variable: true,
+                            name: "ocf".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None,
+                            constraints: None
+                        },
+                        Field {
+                            public: false,
+                            variable: false,
+                            name: "length".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Value("u8".to_string()),
+                            value: None,
+                            constraints: None
+                        },
+                        Field {
+                            public: false,
+                            variable: false,
+                            name: "data".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Value("u8".to_string()),
+                            value: Some(Expression::Value(Value::Number(10))),
+                            constraints: None
+                        },
+                        Field {
+                            public: false,
+                            variable: false,
+                            name: "message".to_string(),
+                            apply_to: None,
+                            data_type: DataType::Choose(vec![ChooseVariant {
+                                name: "SomeMessage".to_string(),
+                                data_type: DataType::Array {
+                                    data_type: Box::new(DataType::Value("u8".to_string())),
+                                    length: Expression::Value(Value::Number(8)),
+                                },
+                            }]),
+                            value: None,
+                            constraints: None,
+                        },
+                    ],
+                }]
+            })
             .unwrap()
             .to_string()
             .trim()

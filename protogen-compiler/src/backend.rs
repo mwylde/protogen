@@ -5,6 +5,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::ast::*;
+use crate::intermediate::IR;
 use crate::rust::*;
 
 type Parser = Box<dyn Fn(RustExpression) -> RustExpression>;
@@ -173,7 +174,7 @@ fn many(subparser: Parser) -> Parser {
 }
 
 pub struct Generator {
-    pub messages: Vec<Message>,
+    pub protocol: Protocol,
     pub imports: HashSet<String>,
     pub structs: HashMap<String, Struct>,
     pub impls: HashMap<String, Vec<Impl>>,
@@ -184,6 +185,7 @@ impl Generator {
     pub fn render_data_type(prefix: &str, enums: &mut Vec<Enum>, data_type: &DataType) -> String {
         match data_type {
             DataType::Value(v) if v == "cstring" => "Vec<u8>".to_string(),
+            DataType::Value(v) if v == "u1" => "bool".to_string(),
             DataType::Value(v) => {
                 if let Ok((sign, _, width)) = Generator::parse_int_type(v) {
                     format!("{}{}", sign, width)
@@ -267,26 +269,23 @@ impl Generator {
         }
     }
 
-    fn render_expression(variable_context: &str, ex: &Expression) -> RustExpression {
+    pub fn render_expression(ex: &Expression) -> RustExpression {
         match ex {
             Expression::Value(v) => Self::render_value(v),
-            Expression::Variable(v) => RustExpression::Value(RustValue::Variable(format!(
-                "{}_{}",
-                variable_context,
-                &v[1..]
-            ))),
+            Expression::Variable(v) => RustExpression::Value(RustValue::Variable(v.clone())),
+            Expression::Parameter(v) => RustExpression::Value(RustValue::Variable(v.clone())),
             Expression::Binary(op, lh, rh) => RustExpression::BinOp {
                 op: format!("{}", op),
-                lh: Box::new(Generator::render_expression(variable_context, &*lh)),
-                rh: Box::new(Generator::render_expression(variable_context, &*rh)),
+                lh: Box::new(Generator::render_expression(&*lh)),
+                rh: Box::new(Generator::render_expression(&*rh)),
             },
             Expression::Unary(UnaryOp::Len, arg) => RustExpression::MethodCall {
-                target: Box::new(Generator::render_expression(variable_context, &arg)),
+                target: Box::new(Generator::render_expression(&arg)),
                 name: "len".to_string(),
                 parameters: vec![],
             },
             Expression::Unary(UnaryOp::Serialize, arg) => RustExpression::MethodCall {
-                target: Box::new(Generator::render_expression(variable_context, &arg)),
+                target: Box::new(Generator::render_expression(&arg)),
                 name: "to_bytes".to_string(),
                 parameters: vec![],
             },
@@ -307,6 +306,7 @@ impl Generator {
 
         Ok(match data_type {
             DataType::Value(ref s) => match s.as_ref() {
+                "u1" => f("read_bit"),
                 "u8" => f("read_u8_le"),
                 "u16" => f("read_u16_le"),
                 "u32" => f("read_u32_le"),
@@ -356,7 +356,7 @@ impl Generator {
                         args.len()
                     ));
                 }
-                let expr = Generator::render_expression("", args.get(0).unwrap());
+                let expr = Generator::render_expression(args.get(0).unwrap());
                 Box::new(move |s| RustExpression::FunctionCall {
                     name: "read_str_utf8".to_string(),
                     parameters: vec![s, cast(expr.clone(), "usize")],
@@ -367,12 +367,12 @@ impl Generator {
                 let parameters: Vec<RustExpression> = args
                     .iter()
                     .map(|e| {
-                        let expr = Generator::render_expression("", e);
+                        let expr = Generator::render_expression(e);
                         let is_ref = match &expr {
                             RustExpression::Value(RustValue::Variable(var)) => {
                                 // TODO: find a better way to handle variables
                                 field_types
-                                    .get(&var[1..])
+                                    .get(&var[..])
                                     .map(|dt| Generator::use_ref(dt))
                                     .unwrap_or(true)
                             }
@@ -458,8 +458,9 @@ impl Generator {
                         return Err("Byte arrays cannot be array lengths".to_string());
                     }
                     Expression::Value(Value::Number(n)) => num(*n as i64),
-                    Expression::Variable(v) => var(&format!("_{}", &v[1..])),
-                    expr @ Expression::Binary(..) => Generator::render_expression("", &expr),
+                    Expression::Variable(v) => var(&v),
+                    Expression::Parameter(v) => var(&v),
+                    expr @ Expression::Binary(..) => Generator::render_expression(&expr),
                     Expression::Unary(..) => unimplemented!(),
                 };
 
@@ -532,7 +533,7 @@ impl Generator {
         // add arguments to the function
         for arg in &message.args {
             fun_args.push(format!(
-                "_{}: {}",
+                "{}: {}",
                 arg.name,
                 Generator::arg_type(&arg.data_type)?
             ));
@@ -543,11 +544,7 @@ impl Generator {
             // the value matches
             if let Some(v) = &arg.value {
                 fun_body.push(RustExpression::If {
-                    condition: Box::new(binop(
-                        "!=",
-                        Generator::render_value(v),
-                        RustExpression::Value(RustValue::Variable(format!("_{}", arg.name))),
-                    )),
+                    condition: Box::new(binop("!=", Generator::render_value(v), var(&arg.name))),
                     true_block: Box::new(Self::return_parse_error(var("_s0"))),
                     false_block: None,
                 });
@@ -570,7 +567,7 @@ impl Generator {
 
             let v = if let Some(ref target) = f.apply_to {
                 // TODO: support applying to arguments
-                let (i, _, tf) = io.get(&target[1..]).ok_or(format!(
+                let (i, _, tf) = io.get(&target[..]).ok_or(format!(
                     "Could not find stream {} for {} in {}",
                     target, f.name, message.name
                 ))?;
@@ -580,7 +577,8 @@ impl Generator {
                         if v == "u8" {
                             let l = match length {
                                 Expression::Value(Value::Number(n)) => n.to_string(),
-                                Expression::Variable(s) => format!("_{}", &s[1..]),
+                                Expression::Variable(s) => s.clone(),
+                                Expression::Parameter(s) => s.clone(),
                                 _ => unimplemented!(),
                             };
 
@@ -627,10 +625,10 @@ impl Generator {
                 let data_type = Generator::render_data_type(&prefix, &mut vec![], &f.data_type);
                 fun_body.push(RustExpression::Let {
                     is_mut: false,
-                    name: format!("_{}", f.name),
+                    name: f.name.clone(),
                     typ: Some(data_type.clone()),
                     value: Box::new(RustExpression::Cast {
-                        expression: Box::new(Generator::render_expression("", ex)),
+                        expression: Box::new(Generator::render_expression(ex)),
                         typ: data_type,
                     }),
                 });
@@ -639,7 +637,7 @@ impl Generator {
 
                 fun_body.push(RustExpression::TupleLet {
                     is_mut: false,
-                    names: vec![output.clone(), format!("_{}", f.name)],
+                    names: vec![output.clone(), f.name.clone()],
                     types: None,
                     value: Box::new(qm(Generator::parser_for_data_type(
                         &prefix,
@@ -651,13 +649,7 @@ impl Generator {
                 if let Some(ref constraints) = f.constraints {
                     let mut cs = constraints
                         .iter()
-                        .map(|c| {
-                            binop(
-                                "!=",
-                                var(&format!("_{}", f.name)),
-                                Generator::render_expression("", c),
-                            )
-                        })
+                        .map(|c| binop("!=", var(&f.name.clone()), Generator::render_expression(c)))
                         .into_iter();
 
                     // parser guarantees we have at least one element so unwrap is safe
@@ -681,19 +673,19 @@ impl Generator {
         let mut construct_args: Vec<(String, RustExpression)> = message
             .args
             .iter()
-            .filter(|a| a.value.is_none())
+            .filter(|a| a.public)
             .map(|a| {
                 match a.data_type {
                     // TODO: probably need to support other stuff here
                     DataType::Array { .. } => (
                         format!("_{}", a.name),
                         RustExpression::MethodCall {
-                            target: Box::new(var(&format!("_{}", a.name))),
+                            target: Box::new(var(&a.name)),
                             name: "to_vec".to_string(),
                             parameters: vec![],
                         },
                     ),
-                    _ => struct_name(format!("_{}", a.name)),
+                    _ => (format!("_{}", a.name), var(&a.name)),
                 }
             })
             .collect();
@@ -702,8 +694,8 @@ impl Generator {
             message
                 .fields
                 .iter()
-                .filter(|f| f.value.is_none() && !f.variable)
-                .map(|f| struct_name(format!("_{}", f.name))),
+                .filter(|f| f.public)
+                .map(|f| (format!("_{}", f.name), var(&f.name))),
         );
 
         fun_body.push(ok(RustExpression::Tuple(vec![
@@ -733,125 +725,155 @@ impl Generator {
     fn writer_for_field(
         message: &Message,
         field_name: &str,
-        var: &str,
+        data: RustExpression,
         data_type: &DataType,
-    ) -> String {
-        let vref = format!(
-            "{}{}",
-            if Generator::use_ref(data_type) {
-                "&"
-            } else {
-                ""
-            },
-            var
-        );
-
+    ) -> RustExpression {
         match data_type {
             DataType::Value(ref v) => {
+                let typ = Self::render_data_type("", &mut vec![], data_type);
+                let data = RustExpression::Cast {
+                    expression: Box::new(data),
+                    typ,
+                };
                 match v.as_ref() {
-                    "u8" => format!("buf.push_u8({});", vref),
-                    "i8" => format!("buf.push_i8({});", vref),
+                    "u8" => method("buf", "push_u8", vec![data]),
+                    "i8" => method("buf", "push_i8", vec![data]),
                     w @ "u16" | w @ "u32" | w @ "u64" | w @ "i16" | w @ "i32" | w @ "i64" => {
-                        format!("buf.push_{}_le({});", w, vref)
+                        method("buf", &format!("push_{}_le", w), vec![data])
                     }
-                    "cstring" => format!("buf.push_bytes({});", vref),
-                    "u1" => format!("buf.push_bit({} == 1);", vref),
+                    "cstring" => method("buf", "push_bytes", vec![data]),
+                    "u1" => method("buf", "push_bit", vec![data]),
                     v => {
                         if let Ok((sign, size, _width)) = Generator::parse_int_type(v) {
                             if sign == "i" {
                                 // not really clear what to do here... does this even make sense??
-                                "unimplemented();".to_string()
+                                RustExpression::FunctionCall {
+                                    name: "unimplemented!".to_string(),
+                                    parameters: vec![],
+                                }
                             } else {
-                                format!(
-                                    "for _v in 0..{} {{ buf.push_bit({} & (1 << _v) > 0) }}",
-                                    size, vref
-                                )
+                                let iter = RustExpression::Range(
+                                    Box::new(num(0)),
+                                    Box::new(num(size as i64)),
+                                );
+                                let rev_iter = RustExpression::MethodCall {
+                                    target: Box::new(iter),
+                                    name: "rev".to_string(),
+                                    parameters: vec![],
+                                };
+                                RustExpression::ForIn {
+                                    i: Box::new(var("_v")),
+                                    iter: Box::new(rev_iter),
+                                    body: Box::new(method(
+                                        "buf",
+                                        "push_bit",
+                                        vec![
+                                            // buf.push_bit(<data> & (1 << _v) > 0)
+                                            binop(
+                                                ">",
+                                                binop("&", data, binop("<<", num(1), var("_v"))),
+                                                num(0),
+                                            ),
+                                        ],
+                                    )),
+                                }
                             }
                         } else {
-                            "unimplemented!();".to_string()
+                            RustExpression::FunctionCall {
+                                name: "unimplemented!".to_string(),
+                                parameters: vec![],
+                            }
                         }
                     }
                 }
             }
             DataType::Array { data_type, .. } => match data_type.as_ref() {
-                DataType::Value(v) if *v == "u8" => format!("buf.push_bytes({});", vref),
-                dt => format!(
-                    "for v in {} {{ {} }}",
-                    vref,
-                    Generator::writer_for_field(message, field_name, "*v", dt)
-                ),
+                DataType::Value(v) if *v == "u8" => method("buf", "push_bytes", vec![data]),
+                dt => RustExpression::ForIn {
+                    i: Box::new(var("__v")),
+                    iter: Box::new(data),
+                    body: Box::new(Generator::writer_for_field(
+                        message,
+                        field_name,
+                        var("*__v"),
+                        dt,
+                    )),
+                },
             },
-            DataType::Message { name: ref m, .. } if m == "str_utf8" => {
-                format!("buf.push_bytes({}.as_bytes());", var)
-            }
-            DataType::Message { .. } => format!("({}).write_bytes(buf);", var),
+            DataType::Message { name: ref m, .. } if m == "str_utf8" => method(
+                "buf",
+                "push_bytes",
+                vec![RustExpression::MethodCall {
+                    target: Box::new(data),
+                    name: "as_bytes".to_string(),
+                    parameters: vec![],
+                }],
+            ),
+            DataType::Message { .. } => RustExpression::MethodCall {
+                target: Box::new(data),
+                name: "write_bytes".to_string(),
+                parameters: vec![var("buf")],
+            },
             DataType::ManyCombinator { data_type } => Generator::writer_for_field(
                 message,
                 field_name,
-                var,
+                data,
                 &DataType::Array {
                     data_type: data_type.clone(),
                     length: Expression::Value(Value::Number(0)),
                 },
             ),
-            DataType::RestCombinator => format!("buf.push_bytes({});", vref),
+            DataType::RestCombinator => method("buf", "push_bytes", vec![data]),
             DataType::Choose(variants) => {
-                let matches: Vec<String> = variants
+                let matches: Vec<(Destructurer, RustExpression)> = variants
                     .iter()
-                    .map(|var| {
-                        format!(
-                            "        {}_{}::{}(v) => v.write_bytes(buf),",
-                            to_camel_case(&message.name, true),
-                            to_camel_case(&field_name, true),
-                            var.name
+                    .map(|variant| {
+                        (
+                            Destructurer::TupleStruct(
+                                format!(
+                                    "{}_{}::{}",
+                                    to_camel_case(&message.name, true),
+                                    to_camel_case(&field_name, true),
+                                    variant.name
+                                ),
+                                vec!["v".to_string()],
+                            ),
+                            method("v", "write_bytes", vec![var("buf")]),
                         )
                     })
                     .collect();
 
-                format!("match {} {{\n{}\n    }}", vref, matches.join("\n"))
+                RustExpression::Match(Box::new(data), matches)
             }
         }
     }
 
-    fn write_bytes_fn(_message: &Message) -> Function {
-        let body: Vec<RustExpression> = vec![];
+    fn write_bytes_fn(message: &Message, ir: &IR) -> Result<Function, String> {
+        let mut body: Vec<RustExpression> = vec![];
 
-        //        let graph = message.graph();
-        //
-        //        for field in &message.fields {
-        //            if field.value.is_none() && field.apply_to.is_none() {
-        //                let name = if field.variable {
-        //                    let deps = graph.get(&field.name).unwrap();
-        //                    if deps.len() != 1 {
-        //                        format!(
-        //                            "panic!(\"expected exactly one upstream for {}, found {}\")",
-        //                            field.name,
-        //                            deps.len()
-        //                        )
-        //                    } else {
-        //                        match &deps[0].1 {
-        //                            Edge::Expression(expr) => {
-        //                                format!("({})", Generator::render_expression("self.", &expr))
-        //                            }
-        //                            Edge::ApplyTo => format!("(self._{}.to_vec())", deps[0].0),
-        //                        }
-        //                    }
-        //                } else {
-        //                    format!("self._{}", field.name)
-        //                };
-        //
-        //                body.push(Generator::writer_for_field(
-        //                    message,
-        //                    &field.name,
-        //                    &name,
-        //                    &field.data_type,
-        //                ));
-        //            }
-        //        }
+        for field in message.fields.iter().filter(|f| f.value.is_none()) {
+            let data = if field.public {
+                let v = var(&format!("self._{}", field.name));
+                if Self::use_ref(&field.data_type) {
+                    RustExpression::Ref(Box::new(v))
+                } else {
+                    v
+                }
+            } else {
+                Self::render_expression(&ir.expr_for_field(&message.name, &field.name)?)
+            };
+
+            body.push(Self::writer_for_field(
+                message,
+                &field.name,
+                data,
+                &field.data_type,
+            ));
+        }
 
         let buf_name = if body.is_empty() { "_buf" } else { "buf" };
 
-        Function {
+        Ok(Function {
             name: "write_bytes".to_string(),
             public: false,
             generics: vec![],
@@ -860,11 +882,11 @@ impl Generator {
                 format!("{}: &mut buffer::BitBuffer", buf_name),
             ],
             return_type: None,
-            body: RustExpression::FunctionCall {
-                name: "unimplemented!".to_string(),
-                parameters: vec![],
+            body: RustExpression::Block {
+                expressions: body,
+                terminated: true,
             },
-        }
+        })
     }
 
     fn add_field(
@@ -895,12 +917,7 @@ impl Generator {
 
         let mut body = vec![];
 
-        if let Some(v) = value {
-            body.push(RustExpression::Cast {
-                expression: Box::new(Generator::render_expression("self.", v)),
-                typ: data_type_string,
-            });
-        } else if !is_variable {
+        if public {
             st.fields.push(StructField {
                 name: format!("_{}", name),
                 data_type: data_type_string,
@@ -912,8 +929,6 @@ impl Generator {
             } else {
                 body.push(expr);
             }
-        } else if public {
-            unimplemented!("public variables are not yet supported");
         }
 
         let getter = Function {
@@ -933,13 +948,16 @@ impl Generator {
         }
     }
 
-    pub fn from_messages(messages: Vec<Message>) -> Result<Generator, String> {
+    pub fn from_protocol(protocol: Protocol) -> Result<Generator, String> {
         let mut structs = HashMap::new();
         let mut enums: Vec<Enum> = vec![];
         let mut impls: HashMap<String, Vec<Impl>> = HashMap::new();
         let imports: HashSet<String> = ["protogen::*".to_string()].iter().cloned().collect();
 
-        for message in &messages {
+        let ir = IR::from_ast(&protocol);
+        let messages = &protocol.messages;
+
+        for message in messages {
             let mut s = Struct {
                 name: to_camel_case(&message.name, true),
                 fields: vec![],
@@ -980,39 +998,46 @@ impl Generator {
 
             imp.functions.push(Generator::parse_fn(&message)?);
 
-            imp.functions.push(Generator::write_bytes_fn(&message));
+            match &ir {
+                Ok(ir) => {
+                    imp.functions.push(Generator::write_bytes_fn(&message, ir)?);
 
-            imp.functions.push(Function {
-                name: "to_vec".to_string(),
-                public: true,
-                generics: vec![],
-                args: vec!["&self".to_string()],
-                return_type: Some("Vec<u8>".to_string()),
-                body: RustExpression::Block {
-                    expressions: vec![
-                        RustExpression::Let {
-                            is_mut: true,
-                            name: "buf".to_string(),
-                            typ: None,
-                            value: Box::new(RustExpression::FunctionCall {
-                                name: "buffer::BitBuffer::new".to_string(),
-                                parameters: vec![],
-                            }),
+                    imp.functions.push(Function {
+                        name: "to_vec".to_string(),
+                        public: true,
+                        generics: vec![],
+                        args: vec!["&self".to_string()],
+                        return_type: Some("Vec<u8>".to_string()),
+                        body: RustExpression::Block {
+                            expressions: vec![
+                                RustExpression::Let {
+                                    is_mut: true,
+                                    name: "buf".to_string(),
+                                    typ: None,
+                                    value: Box::new(RustExpression::FunctionCall {
+                                        name: "buffer::BitBuffer::new".to_string(),
+                                        parameters: vec![],
+                                    }),
+                                },
+                                RustExpression::MethodCall {
+                                    target: Box::new(var("self")),
+                                    name: "write_bytes".to_string(),
+                                    parameters: vec![var("&mut buf")],
+                                },
+                                RustExpression::MethodCall {
+                                    target: Box::new(var("buf")),
+                                    name: "into_vec".to_string(),
+                                    parameters: vec![],
+                                },
+                            ],
+                            terminated: false,
                         },
-                        RustExpression::MethodCall {
-                            target: Box::new(var("self")),
-                            name: "write_bytes".to_string(),
-                            parameters: vec![var("&mut buf")],
-                        },
-                        RustExpression::MethodCall {
-                            target: Box::new(var("buf")),
-                            name: "into_vec".to_string(),
-                            parameters: vec![],
-                        },
-                    ],
-                    terminated: false,
-                },
-            });
+                    });
+                }
+                Err(err) => {
+                    eprintln!("Failed to construct generator function: {}", err);
+                }
+            }
 
             if structs.contains_key(&s.name) {
                 return Err(format!("duplicate struct type {}", s.name));
@@ -1037,7 +1062,7 @@ impl Generator {
         }
 
         Ok(Generator {
-            messages,
+            protocol,
             imports,
             structs,
             enums,
@@ -1056,7 +1081,7 @@ impl fmt::Display for Generator {
 
         write!(f, "\n")?;
 
-        for message in &self.messages {
+        for message in &self.protocol.messages {
             let name = to_camel_case(&message.name, true);
             // write the struct definition
             write!(

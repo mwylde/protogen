@@ -1,0 +1,12 @@
+[package]
+name = "protogen-tests"
+version = "0.1.0"
+authors = ["Micah Wylde <micah@micahw.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+protogen = { path = "../protogen" }
+
+[build-dependencies.protogen-compiler]
+path = "../protogen-compiler"

@@ -37,7 +37,8 @@ match {
     r"0[bB][01]+" => BIN_NUMBER,
     r"[0-9]+" => DEC_NUMBER,
 
-    r"[@\$][a-zA-Z_][a-zA-Z0-9_]*" => VARIABLE,
+    r"@[a-zA-Z_][a-zA-Z0-9_]*" => VARIABLE,
+    r"\$[a-zA-Z_][a-zA-Z0-9_]*" => PARAMETER,
     r"[a-zA-Z_][a-zA-Z0-9_]*" => IDENT,
 
     r#"b"[^"]*""# => BSTRING,
@@ -94,7 +95,7 @@ pub MessageArgs: Vec<Arg> = {
 }
 
 pub MessageArgDef: Arg = {
-    <public:PUBLIC?> <name:VARIABLE> COLON <data_type:DataType> <value: (EQUALS <Value>)?> => {
+    <public:PUBLIC?> <name:PARAMETER> COLON <data_type:DataType> <value: (EQUALS <Value>)?> => {
         Arg {
             public: public.is_some(),
             name: name[1..].to_string(),
@@ -118,7 +119,7 @@ pub Field: Field = {
             public: public.is_some(),
             variable: name.0,
             name: name.1,
-            apply_to: apply_to.map(|v| v.to_string()),
+            apply_to: apply_to.map(|v| v[1..].to_string()),
             data_type,
             value,
             constraints,
@@ -202,7 +203,8 @@ App: Expression = {
 
 Term: Expression = {
   <Value> => Expression::Value(<>),
-  <VARIABLE> => Expression::Variable(<>.to_string()),
+  <VARIABLE> => Expression::Variable(<>[1..].to_string()),
+  <PARAMETER> => Expression::Parameter(<>[1..].to_string()),
 //  MINUS <t:Term> => match t {
 //    Expr::Number(n) => Expr::Number(-n),
 //    t => Expr::Prim1(MonOp::Neg, Box::new(t)),

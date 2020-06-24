@@ -1,8 +1,8 @@
 // use petgraph::Graph;
 
 use crate::ast;
-use crate::ast::{BinOp, DataType, Field, Message, UnaryOp, Value};
-use std::collections::{HashMap, HashSet};
+use crate::ast::{BinOp, DataType, Expression, Field, Message, Protocol, UnaryOp, Value};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -10,13 +10,14 @@ use std::fmt::Formatter;
 mod tests {
     use super::*;
     use crate::ast::Protocol;
+    use crate::backend::Generator;
     use crate::parser::grammar::{ExpressionParser, MessageParser, ProtocolParser};
 
     #[test]
     fn solve_for() {
         let pexpr = ExpressionParser::new().parse("(@var - 5) * 10").unwrap();
-        let lh = Expression::from_parser("message", &pexpr);
-        let rh = Expression::Value(Value::Number(20));
+        let lh = IRExpression::from_parser("message", &pexpr);
+        let rh = IRExpression::Value(Value::Number(20));
 
         let solved = Equation { lh, rh }
             .solve_for(&Ref::new("message".to_string(), "var".to_string()))
@@ -111,7 +112,7 @@ other_subchunk (public $id: [u8; 4]) = {
             &complete,
         )
         .unwrap();
-        println!("RESULT = {:?}", result);
+        println!("{}", Generator::render_expression(&result.to_ast("wave")));
     }
 
     #[test]
@@ -135,25 +136,25 @@ other_subchunk (public $id: [u8; 4]) = {
 
         constraints.insert(
             b.clone(),
-            vec![Expression::Binary(
+            vec![IRExpression::Binary(
                 BinOp::Plus,
-                Box::new(Expression::Variable(a.clone())),
-                Box::new(Expression::Value(Value::Number(15))),
+                Box::new(IRExpression::Variable(a.clone())),
+                Box::new(IRExpression::Value(Value::Number(15))),
             )],
         );
 
         constraints.insert(
             c.clone(),
-            vec![Expression::Binary(
+            vec![IRExpression::Binary(
                 BinOp::Minus,
-                Box::new(Expression::Variable(b.clone())),
-                Box::new(Expression::Value(Value::Number(12))),
+                Box::new(IRExpression::Variable(b.clone())),
+                Box::new(IRExpression::Value(Value::Number(12))),
             )],
         );
 
         let result = expr_for_field(&c, &constraints, &complete).unwrap();
 
-        println!("{:?}", result);
+        println!("{}", Generator::render_expression(&result.to_ast("msg")));
     }
 }
 
@@ -180,35 +181,62 @@ impl fmt::Display for Ref {
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
-pub enum Expression {
+pub enum IRExpression {
     Value(Value),
     Variable(Ref),
-    Binary(BinOp, Box<Expression>, Box<Expression>),
-    Unary(UnaryOp, Box<Expression>),
+    Binary(BinOp, Box<IRExpression>, Box<IRExpression>),
+    Unary(UnaryOp, Box<IRExpression>),
     Match(Ref, Vec<(String, String)>),
 }
 
-impl Expression {
-    fn from_parser(message: &str, expr: &ast::Expression) -> Expression {
+impl IRExpression {
+    fn from_parser(message: &str, expr: &ast::Expression) -> IRExpression {
         match expr {
-            ast::Expression::Value(v) => Expression::Value(v.clone()),
-            ast::Expression::Variable(field) => Expression::Variable(Ref {
+            ast::Expression::Value(v) => IRExpression::Value(v.clone()),
+            ast::Expression::Variable(field) => IRExpression::Variable(Ref {
                 message: message.to_string(),
-                field: field[1..].to_string(),
+                field: field.to_string(),
             }),
-            ast::Expression::Binary(op, lh, rh) => Expression::Binary(
+            // TODO: is this correct?
+            ast::Expression::Parameter(field) => IRExpression::Variable(Ref {
+                message: message.to_string(),
+                field: field.to_string(),
+            }),
+            ast::Expression::Binary(op, lh, rh) => IRExpression::Binary(
                 *op,
-                Box::new(Expression::from_parser(message, &*lh)),
-                Box::new(Expression::from_parser(message, &*rh)),
+                Box::new(IRExpression::from_parser(message, &*lh)),
+                Box::new(IRExpression::from_parser(message, &*rh)),
             ),
             ast::Expression::Unary(op, arg) => {
-                Expression::Unary(*op, Box::new(Expression::from_parser(message, &*arg)))
+                IRExpression::Unary(*op, Box::new(IRExpression::from_parser(message, &*arg)))
             }
         }
     }
 
-    fn simplify_step(&self) -> Result<Expression, String> {
-        use self::Expression::*;
+    fn to_ast(&self, msg_context: &str) -> ast::Expression {
+        match self {
+            IRExpression::Value(v) => ast::Expression::Value(v.clone()),
+            IRExpression::Variable(r) => {
+                if msg_context == r.message {
+                    ast::Expression::Variable(format!("self._{}", r.field))
+                } else {
+                    ast::Expression::Variable(format!("self._{}._{}", r.message, r.field))
+                }
+            }
+            IRExpression::Binary(op, lh, rh) => ast::Expression::Binary(
+                *op,
+                Box::new(lh.to_ast(msg_context)),
+                Box::new(rh.to_ast(msg_context)),
+            ),
+            IRExpression::Unary(op, arg) => {
+                ast::Expression::Unary(*op, Box::new(arg.to_ast(msg_context)))
+            }
+            IRExpression::Match(_target, _arms) => unimplemented!(),
+        }
+    }
+
+    fn simplify_step(&self) -> Result<IRExpression, String> {
+        use self::IRExpression::*;
         use crate::ast::Value::*;
 
         Ok(match self {
@@ -232,7 +260,7 @@ impl Expression {
         })
     }
 
-    pub fn simplify(&self) -> Result<Expression, String> {
+    pub fn simplify(&self) -> Result<IRExpression, String> {
         let mut expr = self.clone();
         loop {
             let next = expr.simplify_step()?;
@@ -244,41 +272,43 @@ impl Expression {
         Ok(expr)
     }
 
-    pub fn replace(&self, rf: &Ref, rep: &Expression) -> Expression {
+    pub fn replace(&self, rf: &Ref, rep: &IRExpression) -> IRExpression {
         match self {
-            Expression::Variable(var) if var == rf => rep.clone(),
-            Expression::Variable(var) => Expression::Variable(var.clone()),
-            Expression::Binary(op, lh, rh) => Expression::Binary(
+            IRExpression::Variable(var) if var == rf => rep.clone(),
+            IRExpression::Variable(var) => IRExpression::Variable(var.clone()),
+            IRExpression::Binary(op, lh, rh) => IRExpression::Binary(
                 *op,
                 Box::new(lh.replace(rf, rep)),
                 Box::new(rh.replace(rf, rep)),
             ),
-            Expression::Unary(op, arg) => Expression::Unary(*op, Box::new(arg.replace(rf, rep))),
-            Expression::Match(_, _) => unimplemented!(),
+            IRExpression::Unary(op, arg) => {
+                IRExpression::Unary(*op, Box::new(arg.replace(rf, rep)))
+            }
+            IRExpression::Match(_, _) => unimplemented!(),
             ex => ex.clone(),
         }
     }
 }
 
-impl fmt::Display for Expression {
+impl fmt::Display for IRExpression {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        fn print(f: &mut Formatter, expr: &Expression) -> fmt::Result {
+        fn print(f: &mut Formatter, expr: &IRExpression) -> fmt::Result {
             match expr {
-                e @ Expression::Binary(..) => write!(f, "({})", e),
+                e @ IRExpression::Binary(..) => write!(f, "({})", e),
                 e => write!(f, "{}", e),
             }
         }
 
         match self {
-            Expression::Value(v) => v.fmt(f),
-            Expression::Variable(v) => write!(f, "{}", v),
-            Expression::Binary(op, l, r) => {
+            IRExpression::Value(v) => v.fmt(f),
+            IRExpression::Variable(v) => write!(f, "{}", v),
+            IRExpression::Binary(op, l, r) => {
                 print(f, &**l)?;
                 write!(f, " {} ", op)?;
                 print(f, &**r)
             }
-            Expression::Unary(op, arg) => write!(f, "{}({})", op, arg),
-            Expression::Match(v, arms) => {
+            IRExpression::Unary(op, arg) => write!(f, "{}({})", op, arg),
+            IRExpression::Match(v, arms) => {
                 write!(f, "match {} {{\n", v)?;
                 for arm in arms {
                     write!(f, "  {} => {}\n", arm.0, arm.1)?;
@@ -290,19 +320,19 @@ impl fmt::Display for Expression {
 }
 
 pub struct Equation {
-    lh: Expression,
-    rh: Expression,
+    lh: IRExpression,
+    rh: IRExpression,
 }
 
 impl Equation {
-    pub fn solve_for(&self, var: &Ref) -> Result<Expression, String> {
-        fn contains_var(var: &Ref, expr: &Expression) -> bool {
+    pub fn solve_for(&self, var: &Ref) -> Result<IRExpression, String> {
+        fn contains_var(var: &Ref, expr: &IRExpression) -> bool {
             match expr {
-                Expression::Value(_) => false,
-                Expression::Variable(v) => v == var,
-                Expression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
-                Expression::Unary(_, arg) => contains_var(var, arg),
-                Expression::Match(_, _) => false,
+                IRExpression::Value(_) => false,
+                IRExpression::Variable(v) => v == var,
+                IRExpression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
+                IRExpression::Unary(_, arg) => contains_var(var, arg),
+                IRExpression::Match(_, _) => false,
             }
         }
 
@@ -318,7 +348,7 @@ impl Equation {
         // now we reduce the expression until only the var is on the right side
         loop {
             let next = match &rh {
-                Expression::Variable(v) => {
+                IRExpression::Variable(v) => {
                     if v == var {
                         return Ok(lh);
                     } else {
@@ -328,28 +358,28 @@ impl Equation {
                         );
                     }
                 }
-                Expression::Value(_) => {
+                IRExpression::Value(_) => {
                     panic!(
                         "Somehow ended up with value on right in {:?} = {:?}",
                         lh, rh
                     );
                 }
-                Expression::Binary(op, l, r) => {
+                IRExpression::Binary(op, l, r) => {
                     match (contains_var(var, &l), contains_var(var, &r)) {
                         (true, true) => return Err(format!("found two instances of var {}", var)),
                         (false, false) => panic!("found no instances of var"),
                         (true, false) => {
-                            lh = Expression::Binary(op.inverse(), Box::new(lh), r.clone());
+                            lh = IRExpression::Binary(op.inverse(), Box::new(lh), r.clone());
                             *l.clone()
                         }
                         (false, true) => {
-                            lh = Expression::Binary(op.inverse(), Box::new(lh), l.clone());
+                            lh = IRExpression::Binary(op.inverse(), Box::new(lh), l.clone());
                             *r.clone()
                         }
                     }
                 }
-                Expression::Unary(..) => unimplemented!(),
-                Expression::Match(..) => unimplemented!(),
+                IRExpression::Unary(..) => unimplemented!(),
+                IRExpression::Match(..) => unimplemented!(),
             };
 
             if next == rh {
@@ -361,31 +391,12 @@ impl Equation {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub enum Edge {
-    ApplyTo,
-    Expression(Expression),
-    Len(Expression),
-}
+type Constraint = (Ref, IRExpression);
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Node<'a> {
-    message: &'a str,
-    field: &'a str,
-}
-
-impl<'a> Node<'a> {
-    fn new(message: &'a str, field: &'a str) -> Node<'a> {
-        Node { message, field }
-    }
-}
-
-type Constraint = (Ref, Expression);
-
-fn find_vars(output: &mut Vec<Ref>, expr: &Expression) {
+fn find_vars(output: &mut Vec<Ref>, expr: &IRExpression) {
     match expr {
-        Expression::Variable(v) => output.push(v.clone()),
-        Expression::Binary(_, lh, rh) => {
+        IRExpression::Variable(v) => output.push(v.clone()),
+        IRExpression::Binary(_, lh, rh) => {
             find_vars(output, lh);
             find_vars(output, rh);
         }
@@ -401,11 +412,13 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
             if let Some(value) = &field.value {
                 let this = Ref::to(message, field);
 
-                let expr = Expression::from_parser(&message.name, value);
+                let expr = IRExpression::from_parser(&message.name, value);
 
                 match expr {
-                    Expression::Value(_) => cs.push((this, expr)),
-                    Expression::Variable(var) => cs.push((var.clone(), Expression::Variable(this))),
+                    IRExpression::Value(_) => cs.push((this, expr)),
+                    IRExpression::Variable(var) => {
+                        cs.push((var.clone(), IRExpression::Variable(this)))
+                    }
                     expr => {
                         let mut vars = vec![];
                         find_vars(&mut vars, &expr);
@@ -414,7 +427,7 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                             cs.push((this, expr.simplify()?));
                         } else {
                             let eq = Equation {
-                                lh: Expression::Variable(this),
+                                lh: IRExpression::Variable(this),
                                 rh: expr,
                             };
 
@@ -430,12 +443,12 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
             if let DataType::Array { length, .. } = &field.data_type {
                 let this = Ref::to(message, field);
 
-                let expr = Expression::from_parser(&message.name, length);
+                let expr = IRExpression::from_parser(&message.name, length);
                 let mut vars = vec![];
                 find_vars(&mut vars, &expr);
 
                 let eq = Equation {
-                    lh: Expression::Unary(UnaryOp::Len, Box::new(Expression::Variable(this))),
+                    lh: IRExpression::Unary(UnaryOp::Len, Box::new(IRExpression::Variable(this))),
                     rh: expr,
                 };
 
@@ -447,10 +460,10 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
             // Handle apply_to
             if let Some(target) = &field.apply_to {
                 cs.push((
-                    Ref::new(message.name.clone(), target[1..].to_string()),
-                    Expression::Unary(
+                    Ref::new(message.name.clone(), target.to_string()),
+                    IRExpression::Unary(
                         UnaryOp::Serialize,
-                        Box::new(Expression::Variable(Ref::to(message, field))),
+                        Box::new(IRExpression::Variable(Ref::to(message, field))),
                     ),
                 ));
 
@@ -474,7 +487,7 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                                     for arg in args {
                                         find_vars(
                                             &mut vars,
-                                            &Expression::from_parser(&message.name, &arg),
+                                            &IRExpression::from_parser(&message.name, &arg),
                                         );
                                     }
                                     if vars.len() != 1 {
@@ -512,7 +525,7 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                         if let Some(var) = var {
                             cs.push((
                                 var.clone(),
-                                Expression::Match(Ref::to(message, field), arms),
+                                IRExpression::Match(Ref::to(message, field), arms),
                             ));
                         }
                     }
@@ -534,26 +547,27 @@ fn ref_field(message: &str, field: &Field) -> Ref {
 
 fn expr_for_field(
     field: &Ref,
-    cs: &HashMap<Ref, Vec<Expression>>,
+    cs: &HashMap<Ref, Vec<IRExpression>>,
     complete: &HashSet<Ref>,
-) -> Result<Expression, String> {
+) -> Result<IRExpression, String> {
     if complete.contains(&field) {
-        return Ok(Expression::Variable(field.clone()));
+        return Ok(IRExpression::Variable(field.clone()));
     }
 
     let mut visited = HashSet::new();
-    let mut queue: Vec<Expression> = cs.get(&field).map(|v| v.to_vec()).unwrap_or(vec![]);
+    let mut queue = VecDeque::new();
+    if let Some(es) = cs.get(&field) {
+        for e in es {
+            queue.push_back((0, e.clone()));
+        }
+    }
 
-    let mut steps = 10;
-    while !queue.is_empty() && steps > 0 {
-        steps -= 1;
-        let c = queue.pop().unwrap();
-        if visited.contains(&c) {
+    while !queue.is_empty() {
+        let (depth, c) = queue.pop_front().unwrap();
+        if visited.contains(&c) || depth > 100 {
             // we're in a loop
             continue;
         }
-
-        println!("{:?}", c);
 
         visited.insert(c.clone());
 
@@ -569,7 +583,7 @@ fn expr_for_field(
         // with all possible replacements. if there are none, we're done
         for v in vars {
             for replacement in cs.get(&v).unwrap_or(&vec![]) {
-                queue.push(c.replace(&v, &replacement));
+                queue.push_back((depth + 1, c.replace(&v, &replacement)));
             }
         }
     }
@@ -577,140 +591,50 @@ fn expr_for_field(
     Err(format!("couldn't produce"))
 }
 
-// Map of (node, edges *from* the node)
+pub struct IR {
+    constraint_map: HashMap<Ref, Vec<IRExpression>>,
+    complete: HashSet<Ref>,
+}
 
-// #[derive(Debug, Eq, PartialEq)]
-// struct FieldGraph<'a> {
-//     map: HashMap<Node<'a>, Vec<(Node<'a>, Edge)>>,
-// }
+impl IR {
+    pub fn from_ast(protocol: &Protocol) -> Result<IR, String> {
+        let constraints = find_constraints(&protocol.messages)?;
 
-//impl<'a> FieldGraph<'a> {
-//    pub fn outgoing_edges(&'a self, node: &'a Node) -> &'a [(Node<'a>, Edge)] {
-//        self.map.get(node).map(|x| x.as_ref()).unwrap_or(&[][..])
-//    }
-//
-//    pub fn add_edge(&'a mut self, source: Node<'a>, target: Node<'a>, edge: Edge) {
-//        self.map
-//            .entry(source)
-//            .or_insert_with(|| vec![])
-//            .push((target, edge));
-//    }
-//
-//    pub fn construct(messages: &'a [Message]) -> FieldGraph<'a> {
-//        let mut graph: FieldGraph = FieldGraph {
-//            map: HashMap::new(),
-//        };
-//
-//        for message in messages {
-//            for f in &message.fields {
-//                graph.map.insert(Node::new(&message.name, &f.name), vec![]);
-//            }
-//
-//            for f in &message.fields {
-//                // types of edges:
-//
-//                // Handle apply to edges
-//                if let Some(v) = &f.apply_to {
-//                    graph.add_edge(
-//                        Node::new(&message.name, &v[1..]),
-//                        Node::new(&message.name, &f.name),
-//                        Edge::ApplyTo,
-//                    );
-//                }
-//
-//                fn find_vars(output: &mut Vec<String>, expr: &Expression) {
-//                    match expr {
-//                        Expression::Variable(v) => output.push(v.clone()),
-//                        Expression::Binary(_, lh, rh) => {
-//                            find_vars(output, lh);
-//                            find_vars(output, rh);
-//                        }
-//                        _ => {}
-//                    };
-//                }
-//
-//                // handle assignment edges
-//                if let Some(expr) = &f.value {
-//                    let mut vars = vec![];
-//                    find_vars(&mut vars, &expr);
-//                    if vars.len() > 1 {
-//                        panic!("expressions with more than one variable are not yet supported");
-//                    }
-//
-//                    if vars.len() == 1 {
-//                        let mut var = Expression::Variable(format!("@{}", field.name));
-//
-//                        //                        if is_len {
-//                        //                            var = Expression::Unary(UnaryOp::Len, Box::new(var));
-//                        //                        }
-//
-//                        let eq = Equation {
-//                            lh: expr.clone(),
-//                            rh: var,
-//                        };
-//
-//                        let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
-//
-//                        if vars[0].starts_with("$") {
-//                            // this is a variable
-//                        }
-//
-//                        graph.add_edge(
-//                            Node::new(&message.name, &v[1..]),
-//                            Node::new(&message.name, &f.name),
-//                            Edge::ApplyTo,
-//                        );
-//
-//                        let edges = graph.get_mut(&vars[0][1..]).unwrap();
-//
-//                        edges.push((field.name.clone(), Edge::Expression(expr)));
-//                    }
-//                }
-//
-//                //                fn handle_expr(graph: &mut FieldGraph, field: &Field, expr: &Expression, is_len: bool) {
-//                //                    fn find_vars(output: &mut Vec<String>, expr: &Expression) {
-//                //                        match expr {
-//                //                            Expression::Variable(v) => output.push(v.clone()),
-//                //                            Expression::Binary(_, lh, rh) => {
-//                //                                find_vars(output, lh);
-//                //                                find_vars(output, rh);
-//                //                            }
-//                //                            _ => {}
-//                //                        };
-//                //                    }
-//                //
-//                //                    let mut vars = vec![];
-//                //                    find_vars(&mut vars, &expr);
-//                //                    if vars.len() > 1 {
-//                //                        panic!("expressions with more than one variable are not yet supported");
-//                //                    }
-//                //
-//                //                    if vars.len() == 1 {
-//                //                        let mut var = Expression::Variable(format!("@{}", field.name));
-//                //
-//                //                        if is_len {
-//                //                            var = Expression::Unary(UnaryOp::Len, Box::new(var));
-//                //                        }
-//                //
-//                //                        let eq = Equation {
-//                //                            lh: expr.clone(),
-//                //                            rh: var,
-//                //                        };
-//                //
-//                //                        let expr = eq.solve_for(&vars[0]).unwrap().simplify().unwrap();
-//                //
-//                //                        let edges = graph.get_mut(&vars[0][1..]).unwrap();
-//                //                        edges.push((field.name.clone(), Edge::Expression(expr)));
-//                //                    }
-//                //                }
-//                //
-//                //
-//                //
-//                //                if let DataType::Array { length, .. } = &f.data_type {
-//                //                    handle_expr(&mut graph, f, length, true);
-//                //                }
-//            }
-//        }
-//        graph
-//    }
-//}
+        let mut constraint_map = HashMap::new();
+        for (r, c) in &constraints {
+            constraint_map
+                .entry(r.clone())
+                .or_insert(vec![])
+                .push(c.clone());
+        }
+
+        let complete: HashSet<Ref> = protocol
+            .messages
+            .iter()
+            .flat_map(|m| {
+                let name = m.name.clone();
+                m.fields
+                    .iter()
+                    .filter(|f| !f.variable)
+                    .map(move |f| ref_field(&name, f))
+            })
+            .collect();
+
+        Ok(IR {
+            constraint_map,
+            complete,
+        })
+    }
+
+    pub fn expr_for_field(&self, message: &str, field: &str) -> Result<Expression, String> {
+        expr_for_field(
+            &Ref {
+                message: message.to_string(),
+                field: field.to_string(),
+            },
+            &self.constraint_map,
+            &self.complete,
+        )
+        .map(|e| e.to_ast(message))
+    }
+}

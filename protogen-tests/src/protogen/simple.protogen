@@ -1,0 +1,28 @@
+simple = {
+  public f1_u1: u1;
+  public f2_u1: u1;
+  public f3_u2: u2;
+  public f4_u4: u4;
+  public f5_u32: u32;
+  public f6_u8_5: [u8; 5];
+}
+
+
+simple2 = {
+  public f1: u32;
+  public sub: submessage();
+}
+
+submessage = {
+  public id: [u8; 5];
+}
+
+vars = {
+  @f1: u32;
+  public f2: u32 = @f1 + 9;
+}
+
+vars2 = {
+  @len: u32;
+  public data: [u8; @len];
+}

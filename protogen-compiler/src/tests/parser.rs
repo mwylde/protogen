@@ -384,7 +384,7 @@ hci_message ($name: u32) = {
                                 name: "HciCommand".to_string(),
                                 data_type: DataType::Message {
                                     name: "hci_command".to_string(),
-                                    args: vec![Expression::Variable("@type".to_string())],
+                                    args: vec![Expression::Variable("type".to_string())],
                                 },
                             },
                             ChooseVariant {
@@ -392,8 +392,8 @@ hci_message ($name: u32) = {
                                 data_type: DataType::Message {
                                     name: "hci_data".to_string(),
                                     args: vec![
-                                        Expression::Variable("@type".to_string()),
-                                        Expression::Variable("$name".to_string())
+                                        Expression::Variable("type".to_string()),
+                                        Expression::Parameter("name".to_string())
                                     ],
                                 },
                             },
@@ -444,7 +444,7 @@ message = {
                         apply_to: None,
                         data_type: DataType::Message {
                             name: "str_utf8".to_string(),
-                            args: vec![Expression::Variable("@len".to_string())]
+                            args: vec![Expression::Variable("len".to_string())]
                         },
                         value: None,
                         constraints: None,
@@ -498,7 +498,7 @@ hci_command = {
                         apply_to: None,
                         data_type: DataType::Array {
                             data_type: Box::new(DataType::Value("u8".to_string())),
-                            length: ex_var("@length"),
+                            length: ex_var("length"),
                         },
                         value: None,
                         constraints: None,
@@ -512,7 +512,7 @@ hci_command = {
                             data_type: Box::new(DataType::Value("u8".to_string())),
                             length: Expression::Binary(
                                 BinOp::Divide,
-                                Box::new(ex_var("@length")),
+                                Box::new(ex_var("length")),
                                 Box::new(ex_num(2))
                             )
                         },
@@ -543,20 +543,20 @@ hci_command = {
                     public: true,
                     variable: false,
                     name: "command".to_string(),
-                    apply_to: Some("@data".to_string()),
+                    apply_to: Some("data".to_string()),
                     data_type: DataType::Choose(vec![
                         ChooseVariant {
                             name: "Reset".to_string(),
                             data_type: DataType::Message {
                                 name: "reset".to_string(),
-                                args: vec![Expression::Variable("@ocf".to_string())],
+                                args: vec![Expression::Variable("ocf".to_string())],
                             },
                         },
                         ChooseVariant {
                             name: "SetEventFilter".to_string(),
                             data_type: DataType::Message {
                                 name: "set_event_filter".to_string(),
-                                args: vec![Expression::Variable("@ocf".to_string())],
+                                args: vec![Expression::Variable("ocf".to_string())],
                             },
                         },
                     ]),
@@ -636,7 +636,7 @@ inquiry_result = {
             ExpressionParser::new().parse(text),
             Ok(Expression::Binary(
                 BinOp::Multiply,
-                Box::new(ex_var("@var")),
+                Box::new(ex_var("var")),
                 Box::new(ex_num(5))
             ))
         );
@@ -646,7 +646,7 @@ inquiry_result = {
             ExpressionParser::new().parse(text),
             Ok(Expression::Binary(
                 BinOp::Multiply,
-                Box::new(ex_var("@var")),
+                Box::new(ex_var("var")),
                 Box::new(ex_num(5))
             ))
         );
@@ -654,7 +654,7 @@ inquiry_result = {
         fn var_minus_five() -> Box<Expression> {
             Box::new(Expression::Binary(
                 BinOp::Minus,
-                Box::new(ex_var("@var")),
+                Box::new(ex_var("var")),
                 Box::new(ex_num(5)),
             ))
         }
@@ -677,7 +677,7 @@ inquiry_result = {
                 Box::new(ex_num(6)),
                 Box::new(Expression::Binary(
                     BinOp::Multiply,
-                    Box::new(ex_var("@var")),
+                    Box::new(ex_var("var")),
                     Box::new(ex_num(5))
                 ))
             ))
@@ -715,7 +715,7 @@ hci_command = {
                         data_type: DataType::Value("u8".to_string()),
                         value: Some(Expression::Binary(
                             BinOp::Plus,
-                            Box::new(Expression::Variable("@opcode".to_string())),
+                            Box::new(Expression::Variable("opcode".to_string())),
                             Box::new(Expression::Value(Value::Number(5)))
                         )),
                         constraints: None,

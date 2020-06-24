@@ -78,6 +78,7 @@ impl fmt::Display for Value {
 pub enum Expression {
     Value(Value),
     Variable(String),
+    Parameter(String),
     Binary(BinOp, Box<Expression>, Box<Expression>),
     Unary(UnaryOp, Box<Expression>),
 }
@@ -93,7 +94,8 @@ impl fmt::Display for Expression {
 
         match self {
             Expression::Value(v) => v.fmt(f),
-            Expression::Variable(v) => write!(f, "{}", v),
+            Expression::Variable(v) => write!(f, "@{}", v),
+            Expression::Parameter(v) => write!(f, "${}", v),
             Expression::Binary(op, l, r) => {
                 print(f, &**l)?;
                 write!(f, " {} ", op)?;

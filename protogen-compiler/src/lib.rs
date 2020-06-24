@@ -14,6 +14,7 @@ mod rust;
 
 mod tests;
 
+use crate::ast::Protocol;
 use ast::Message;
 use std::env;
 use std::fs;
@@ -51,8 +52,8 @@ pub fn process_dir_to(
     post_process: Option<&dyn Fn(&str) -> String>,
 ) -> io::Result<()> {
     fs::create_dir_all(out_file.parent().expect("No parent for out file"))?;
-    let messages = parse_dir_int(path)?;
-    process(messages, &out_file, post_process)?;
+    let protocol = parse_dir_int(path)?;
+    process(protocol, &out_file, post_process)?;
 
     Ok(())
 }
@@ -67,7 +68,7 @@ pub fn process_file(path: &Path, post_process: Option<&dyn Fn(&str) -> String>) 
     process(messages, &out_file, post_process)
 }
 
-fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
+fn parse_dir_int(path: &Path) -> io::Result<Protocol> {
     println!("process dir {}", path.to_string_lossy());
 
     let mut messages = vec![];
@@ -76,34 +77,34 @@ fn parse_dir_int(path: &Path) -> io::Result<Vec<Message>> {
         let entry = entry?;
 
         if entry.file_type()?.is_dir() {
-            messages.extend(parse_dir_int(&entry.path())?);
+            messages.extend(parse_dir_int(&entry.path())?.messages);
         } else if entry
             .path()
             .extension()
             .iter()
             .any(|ext| *ext == "protogen")
         {
-            messages.extend(parse_file(&entry.path())?);
+            messages.extend(parse_file(&entry.path())?.messages);
         }
     }
 
-    Ok(messages)
+    Ok(Protocol { messages })
 }
 
-fn parse_file(path: &Path) -> io::Result<Vec<Message>> {
+fn parse_file(path: &Path) -> io::Result<Protocol> {
     let data = fs::read_to_string(path)?;
 
-    parser::parse(&data, path.to_str().unwrap()).map(|p| p.messages)
+    parser::parse(&data, path.to_str().unwrap())
 }
 
 fn process(
-    messages: Vec<Message>,
+    protocol: Protocol,
     out_path: &Path,
     post_process: Option<&dyn Fn(&str) -> String>,
 ) -> io::Result<()> {
     // let name = path.file_stem().expect("not a file");
     // let out_file = out_dir.join(Path::new(name)).with_extension("rs");
-    let mut generated = convert_error(backend::Generator::from_messages(messages))?.to_string();
+    let mut generated = convert_error(backend::Generator::from_protocol(protocol))?.to_string();
     if let Some(process_fn) = post_process {
         generated = process_fn(&generated);
     }
