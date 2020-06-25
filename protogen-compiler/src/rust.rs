@@ -77,7 +77,8 @@ impl fmt::Display for RustValue {
             RustValue::Number(d) => write!(f, "0x{:X}", d),
             RustValue::Byte(b) => write!(f, "{}u8", b),
             RustValue::String(s) => write!(f, "\"{}\"", s),
-            RustValue::Variable(n) => write!(f, "{}", n),
+            RustValue::Variable(n) if n == "self" || n == "_" => write!(f, "{}", n),
+            RustValue::Variable(n) => write!(f, "r#{}", n),
         }
     }
 }
@@ -172,9 +173,11 @@ pub enum RustExpression {
     },
     Tuple(Vec<RustExpression>),
     Ref(Box<RustExpression>),
+    MutRef(Box<RustExpression>),
     Postfix(&'static str, Box<RustExpression>),
     Match(Box<RustExpression>, Vec<(Destructurer, RustExpression)>),
     Break,
+    EscapeHatch(String),
 }
 
 impl fmt::Display for RustExpression {
@@ -298,6 +301,7 @@ impl fmt::Display for RustExpression {
             }
             RustExpression::Loop(body) => write!(f, "loop {{\n{}\n}}", body),
             RustExpression::Ref(e) => write!(f, "&{}", e),
+            RustExpression::MutRef(e) => write!(f, "&mut {}", e),
             RustExpression::Postfix(op, expr) => write!(f, "{}{}", expr, op),
             RustExpression::Range(from, to) => write!(f, "({})..({})", from, to),
             RustExpression::ForIn { i, iter, body } => {
@@ -311,6 +315,7 @@ impl fmt::Display for RustExpression {
                 write!(f, "}}")
             }
             RustExpression::Break => write!(f, "break"),
+            RustExpression::EscapeHatch(s) => write!(f, "{}", s),
         }
     }
 }

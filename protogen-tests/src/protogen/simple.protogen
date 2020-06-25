@@ -10,6 +10,7 @@ simple = {
 
 simple2 = {
   public f1: u32;
+  public type: u32;
   public sub: submessage();
 }
 

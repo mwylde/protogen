@@ -1,7 +1,7 @@
 // use petgraph::Graph;
 
 use crate::ast;
-use crate::ast::{BinOp, DataType, Expression, Field, Message, Protocol, UnaryOp, Value};
+use crate::ast::{BinOp, DataType, Field, Message, Protocol, UnaryOp, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fmt::Formatter;
@@ -10,7 +10,6 @@ use std::fmt::Formatter;
 mod tests {
     use super::*;
     use crate::ast::Protocol;
-    use crate::backend::Generator;
     use crate::parser::grammar::{ExpressionParser, ProtocolParser};
 
     #[test]
@@ -103,7 +102,7 @@ other_subchunk (public $id: [u8; 4]) = {
             })
             .collect();
 
-        let result = expr_for_field(
+        let _result = expr_for_field(
             &Ref {
                 message: "wave".to_string(),
                 field: "chunk_size".to_string(),
@@ -112,7 +111,6 @@ other_subchunk (public $id: [u8; 4]) = {
             &complete,
         )
         .unwrap();
-        println!("{}", Generator::render_expression(&result.to_ast("wave")));
     }
 
     #[test]
@@ -152,16 +150,14 @@ other_subchunk (public $id: [u8; 4]) = {
             )],
         );
 
-        let result = expr_for_field(&c, &constraints, &complete).unwrap();
-
-        println!("{}", Generator::render_expression(&result.to_ast("msg")));
+        let _result = expr_for_field(&c, &constraints, &complete).unwrap();
     }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Ref {
-    message: String,
-    field: String,
+    pub message: String,
+    pub field: String,
 }
 
 impl Ref {
@@ -210,28 +206,6 @@ impl IRExpression {
             ast::Expression::Unary(op, arg) => {
                 IRExpression::Unary(*op, Box::new(IRExpression::from_parser(message, &*arg)))
             }
-        }
-    }
-
-    fn to_ast(&self, msg_context: &str) -> ast::Expression {
-        match self {
-            IRExpression::Value(v) => ast::Expression::Value(v.clone()),
-            IRExpression::Variable(r) => {
-                if msg_context == r.message {
-                    ast::Expression::Variable(format!("self._{}", r.field))
-                } else {
-                    ast::Expression::Variable(format!("self._{}._{}", r.message, r.field))
-                }
-            }
-            IRExpression::Binary(op, lh, rh) => ast::Expression::Binary(
-                *op,
-                Box::new(lh.to_ast(msg_context)),
-                Box::new(rh.to_ast(msg_context)),
-            ),
-            IRExpression::Unary(op, arg) => {
-                ast::Expression::Unary(*op, Box::new(arg.to_ast(msg_context)))
-            }
-            IRExpression::Match(_target, _arms) => unimplemented!(),
         }
     }
 
@@ -625,7 +599,7 @@ impl IR {
         })
     }
 
-    pub fn expr_for_field(&self, message: &str, field: &str) -> Result<Expression, String> {
+    pub fn expr_for_field(&self, message: &str, field: &str) -> Result<IRExpression, String> {
         expr_for_field(
             &Ref {
                 message: message.to_string(),
@@ -634,6 +608,5 @@ impl IR {
             &self.constraint_map,
             &self.complete,
         )
-        .map(|e| e.to_ast(message))
     }
 }

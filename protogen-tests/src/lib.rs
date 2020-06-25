@@ -27,6 +27,7 @@ mod tests {
     fn test_submessage() {
         let msg = Simple2 {
             _f1: 1241,
+            _type: 7771,
             _sub: Submessage {
                 _id: b"hello".to_vec(),
             },

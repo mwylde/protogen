@@ -5,7 +5,8 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::ast::*;
-use crate::intermediate::IR;
+use crate::intermediate::{IRExpression, IR};
+use crate::rust::RustExpression::EscapeHatch;
 use crate::rust::*;
 
 type Parser = Box<dyn Fn(RustExpression) -> RustExpression>;
@@ -99,7 +100,7 @@ fn count(subparser: Parser, n: RustExpression) -> Parser {
     Box::new(move |s| RustExpression::Block {
         expressions: vec![
             let_(true, "s", s),
-            let_(true, "v", var("vec![]")),
+            let_(true, "v", RustExpression::EscapeHatch("vec![]".to_string())),
             RustExpression::ForIn {
                 i: Box::new(var("_")),
                 iter: Box::new(RustExpression::Range(Box::new(num(0)), Box::new(n.clone()))),
@@ -144,7 +145,7 @@ fn many(subparser: Parser) -> Parser {
     Box::new(move |s| RustExpression::Block {
         expressions: vec![
             let_(true, "s", s),
-            let_(true, "v", var("vec![]")),
+            let_(true, "v", RustExpression::EscapeHatch("vec![]".to_string())),
             RustExpression::Loop(Box::new(RustExpression::Match(
                 Box::new(subparser(var("s"))),
                 vec![
@@ -506,7 +507,10 @@ impl Generator {
         let error = RustExpression::Struct {
             name: "protogen::Error".to_string(),
             fields: vec![
-                ("error".to_string(), var("protogen::ErrorType::Failure")),
+                (
+                    "error".to_string(),
+                    EscapeHatch("protogen::ErrorType::Failure".to_string()),
+                ),
                 (
                     "position".to_string(),
                     binop(
@@ -533,7 +537,7 @@ impl Generator {
         // add arguments to the function
         for arg in &message.args {
             fun_args.push(format!(
-                "{}: {}",
+                "r#{}: {}",
                 arg.name,
                 Generator::arg_type(&arg.data_type)?
             ));
@@ -637,7 +641,7 @@ impl Generator {
 
                 fun_body.push(RustExpression::TupleLet {
                     is_mut: false,
-                    names: vec![output.clone(), f.name.clone()],
+                    names: vec![output.clone(), format!("r#{}", f.name)],
                     types: None,
                     value: Box::new(qm(Generator::parser_for_data_type(
                         &prefix,
@@ -849,19 +853,64 @@ impl Generator {
         }
     }
 
+    fn render_irexpression(e: &IRExpression, msg_context: &str) -> RustExpression {
+        match e {
+            IRExpression::Value(v) => Self::render_value(v),
+            IRExpression::Variable(r) => {
+                let name = format!("_{}", r.field);
+                if msg_context == r.message {
+                    RustExpression::Field {
+                        target: Box::new(var("self")),
+                        name,
+                    }
+                } else {
+                    RustExpression::Field {
+                        target: Box::new(RustExpression::Field {
+                            target: Box::new(var("self")),
+                            name: format!("_{}", r.message),
+                        }),
+                        name,
+                    }
+                }
+            }
+            IRExpression::Binary(op, lh, rh) => RustExpression::BinOp {
+                op: format!("{}", op),
+                lh: Box::new(Self::render_irexpression(lh, msg_context)),
+                rh: Box::new(Self::render_irexpression(rh, msg_context)),
+            },
+            IRExpression::Unary(UnaryOp::Len, arg) => RustExpression::MethodCall {
+                target: Box::new(Self::render_irexpression(arg, msg_context)),
+                name: "len".to_string(),
+                parameters: vec![],
+            },
+            IRExpression::Unary(UnaryOp::Serialize, arg) => RustExpression::MethodCall {
+                target: Box::new(Self::render_irexpression(arg, msg_context)),
+                name: "to_vec".to_string(),
+                parameters: vec![],
+            },
+            IRExpression::Match(_target, _arms) => unimplemented!(),
+        }
+    }
+
     fn write_bytes_fn(message: &Message, ir: &IR) -> Result<Function, String> {
         let mut body: Vec<RustExpression> = vec![];
 
         for field in message.fields.iter().filter(|f| f.value.is_none()) {
             let data = if field.public {
-                let v = var(&format!("self._{}", field.name));
+                let v = RustExpression::Field {
+                    target: Box::new(var("self")),
+                    name: format!("_{}", field.name),
+                };
                 if Self::use_ref(&field.data_type) {
                     RustExpression::Ref(Box::new(v))
                 } else {
                     v
                 }
             } else {
-                Self::render_expression(&ir.expr_for_field(&message.name, &field.name)?)
+                Self::render_irexpression(
+                    &ir.expr_for_field(&message.name, &field.name)?,
+                    &message.name,
+                )
             };
 
             body.push(Self::writer_for_field(
@@ -924,7 +973,10 @@ impl Generator {
                 data_type: data_type_string,
             });
 
-            let expr = var(&format!("self._{}", name));
+            let expr = RustExpression::Field {
+                target: Box::new(var("self")),
+                name: format!("_{}", name),
+            };
             if use_ref {
                 body.push(RustExpression::Ref(Box::new(expr)));
             } else {
@@ -1022,7 +1074,7 @@ impl Generator {
                                 RustExpression::MethodCall {
                                     target: Box::new(var("self")),
                                     name: "write_bytes".to_string(),
-                                    parameters: vec![var("&mut buf")],
+                                    parameters: vec![RustExpression::MutRef(Box::new(var("buf")))],
                                 },
                                 RustExpression::MethodCall {
                                     target: Box::new(var("buf")),
