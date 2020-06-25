@@ -9,6 +9,8 @@ extern crate lalrpop_util;
 mod ast;
 pub mod backend;
 mod intermediate;
+
+#[allow(clippy::all)] // lalrpop creates a lot of warning
 pub mod parser;
 mod rust;
 
@@ -33,7 +35,7 @@ fn convert_error<T>(r: Result<T, String>) -> Result<T, io::Error> {
 fn get_out_dir() -> io::Result<PathBuf> {
     match env::var_os("OUT_DIR") {
         Some(var) => Ok(PathBuf::from(&var)),
-        None => return convert_error(Err("missing OUT_DIR variable".to_string())),
+        None => convert_error(Err("missing OUT_DIR variable".to_string())),
     }
 }
 
@@ -110,9 +112,10 @@ fn process(
 
     fs::write(&out_path, generated)?;
 
-    if let Err(_) = Command::new("rustfmt")
+    if Command::new("rustfmt")
         .arg(out_path.to_str().unwrap())
         .output()
+        .is_err()
     {
         eprintln!("failed to run rustfmt, output will not be formatted")
     }

@@ -251,7 +251,7 @@ impl Generator {
 
             Ok((captures[1].to_string(), size, width))
         } else {
-            return Err(format!("Unknown type {}", s));
+            Err(format!("Unknown type {}", s))
         }
     }
 
@@ -647,10 +647,9 @@ impl Generator {
                 });
 
                 if let Some(ref constraints) = f.constraints {
-                    let mut cs = constraints
-                        .iter()
-                        .map(|c| binop("!=", var(&f.name.clone()), Generator::render_expression(c)))
-                        .into_iter();
+                    let mut cs = constraints.iter().map(|c| {
+                        binop("!=", var(&f.name.clone()), Generator::render_expression(c))
+                    });
 
                     // parser guarantees we have at least one element so unwrap is safe
                     let first = cs.next().unwrap();
@@ -910,7 +909,7 @@ impl Generator {
             data_type_string.to_string()
         } else {
             // TODO: this is very hacky
-            if data_type_string.starts_with("Vec<") && data_type_string.ends_with(">") {
+            if data_type_string.starts_with("Vec<") && data_type_string.ends_with('>') {
                 format!("&[{}]", &data_type_string[4..data_type_string.len() - 1])
             } else {
                 format!("&{}", data_type_string)
@@ -1047,7 +1046,7 @@ impl Generator {
 
             impls
                 .entry(s.name.clone())
-                .or_insert_with(|| vec![])
+                .or_insert_with(Vec::new)
                 .push(imp);
             structs.insert(s.name.clone(), s);
         }
@@ -1078,10 +1077,10 @@ impl fmt::Display for Generator {
         let mut ordered_imports: Vec<&String> = self.imports.iter().collect();
         ordered_imports.sort();
         for import in ordered_imports {
-            write!(f, "use {};\n", import)?;
+            writeln!(f, "use {};", import)?;
         }
 
-        write!(f, "\n")?;
+        writeln!(f)?;
 
         for message in &self.protocol.messages {
             let name = to_camel_case(&message.name, true);
@@ -1097,7 +1096,7 @@ impl fmt::Display for Generator {
                 write!(f, "{}\n\n", imp)?;
             }
 
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
 
         for e in &self.enums {
@@ -1109,7 +1108,7 @@ impl fmt::Display for Generator {
                 write!(f, "{}\n\n", imp)?;
             }
 
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
 
         Ok(())

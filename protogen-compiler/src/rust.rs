@@ -20,14 +20,11 @@ pub struct Struct {
 
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
-        )?;
-        write!(f, "pub struct {} {{\n", self.name)?;
+        writeln!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]")?;
+        writeln!(f, "pub struct {} {{", self.name)?;
 
         for field in &self.fields {
-            write!(f, "    {},\n", field)?;
+            writeln!(f, "    {},", field)?;
         }
 
         write!(f, "}}")
@@ -54,15 +51,12 @@ pub struct Enum {
 
 impl fmt::Display for Enum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#[allow(non_camel_case_types)]\n")?;
-        write!(
-            f,
-            "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]\n"
-        )?;
-        write!(f, "pub enum {} {{\n", self.name)?;
+        writeln!(f, "#[allow(non_camel_case_types)]")?;
+        writeln!(f, "#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]")?;
+        writeln!(f, "pub enum {} {{", self.name)?;
 
         for field in &self.variants {
-            write!(f, "    {},\n", field)?;
+            writeln!(f, "    {},", field)?;
         }
 
         write!(f, "}}")
@@ -98,9 +92,9 @@ impl fmt::Display for Destructurer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Destructurer::Struct(name, fields) => {
-                write!(f, "{} {{\n", name)?;
+                writeln!(f, "{} {{", name)?;
                 for n in fields {
-                    write!(f, "    {},\n", n)?;
+                    writeln!(f, "    {},", n)?;
                 }
                 write!(f, "}}")
             }
@@ -230,17 +224,17 @@ impl fmt::Display for RustExpression {
                 expressions,
                 terminated,
             } => {
-                write!(f, "{{\n")?;
+                writeln!(f, "{{")?;
                 if let Some((last, es)) = expressions.split_last() {
                     for e in es {
-                        write!(f, "    {};\n", e)?;
+                        writeln!(f, "    {};", e)?;
                     }
                     write!(f, "    {}", last)?;
                     if *terminated {
                         write!(f, ";")?;
                     }
                 }
-                write!(f, "}}\n")?;
+                writeln!(f, "}}")?;
                 Ok(())
             }
             RustExpression::Let {
@@ -289,9 +283,9 @@ impl fmt::Display for RustExpression {
             RustExpression::BinOp { op, lh, rh } => write!(f, "({}) {} ({})", lh, op, rh),
             RustExpression::Return(e) => write!(f, "return {}", e),
             RustExpression::Struct { name, fields } => {
-                write!(f, "{} {{\n", name)?;
+                writeln!(f, "{} {{", name)?;
                 for (n, v) in fields {
-                    write!(f, "    {}: {},\n", n, v)?;
+                    writeln!(f, "    {}: {},", n, v)?;
                 }
                 write!(f, "}}")
             }
@@ -310,9 +304,9 @@ impl fmt::Display for RustExpression {
                 write!(f, "for {} in {} {{\n{}\n}}", i, iter, body)
             }
             RustExpression::Match(target, variants) => {
-                write!(f, "match {} {{\n", target)?;
+                writeln!(f, "match {} {{", target)?;
                 for (d, b) in variants {
-                    write!(f, "    {} => {},\n", d, b)?;
+                    writeln!(f, "    {} => {},", d, b)?;
                 }
                 write!(f, "}}")
             }
@@ -335,7 +329,7 @@ pub struct Function {
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for annotation in &self.annotations {
-            write!(f, "#[{}]\n", annotation)?;
+            writeln!(f, "#[{}]", annotation)?;
         }
 
         write!(
@@ -356,7 +350,7 @@ impl fmt::Display for Function {
         }
 
         match &self.body {
-            RustExpression::Block { .. } => write!(f, "\n{}\n", self.body),
+            RustExpression::Block { .. } => writeln!(f, "\n{}", self.body),
             _ => write!(f, " {{\n{}\n}}", self.body),
         }
     }
@@ -376,14 +370,14 @@ impl fmt::Display for Impl {
             write!(f, "{} for ", t)?;
         }
 
-        write!(f, "{} {{\n", self.struct_name)?;
+        writeln!(f, "{} {{", self.struct_name)?;
 
         for function in &self.functions {
             let s = format!("{}", function);
-            for l in s.split("\n") {
-                write!(f, "    {}\n", l)?;
+            for l in s.split('\n') {
+                writeln!(f, "    {}", l)?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
 
         write!(f, "}}")

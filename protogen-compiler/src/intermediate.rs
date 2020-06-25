@@ -309,9 +309,9 @@ impl fmt::Display for IRExpression {
             }
             IRExpression::Unary(op, arg) => write!(f, "{}({})", op, arg),
             IRExpression::Match(v, arms) => {
-                write!(f, "match {} {{\n", v)?;
+                writeln!(f, "match {} {{", v)?;
                 for arm in arms {
-                    write!(f, "  {} => {}\n", arm.0, arm.1)?;
+                    writeln!(f, "  {} => {}", arm.0, arm.1)?;
                 }
                 write!(f, "}}")
             }
@@ -479,9 +479,9 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                                     let mut vars = vec![];
 
                                     if args.len() != 1 {
-                                        return Err(format!(
-                                            "Only unary messages supported right now"
-                                        ));
+                                        return Err(
+                                            "Only unary messages supported right now".to_string()
+                                        );
                                     }
 
                                     for arg in args {
@@ -503,12 +503,11 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                                         .ok_or(format!("could not find message {}", name))?;
 
                                     println!("Var {:?} ", vars[0]);
-                                    if var.is_some() {
-                                        if var.unwrap() != vars[0] {
-                                            return Err(format!(
-                                                "All vars in choose currently must be the same"
-                                            ));
-                                        }
+                                    if var.is_some() && var.unwrap() != vars[0] {
+                                        return Err(
+                                            "All vars in choose currently must be the same"
+                                                .to_string(),
+                                        );
                                     }
 
                                     var = Some(vars[0].clone());
@@ -588,7 +587,7 @@ fn expr_for_field(
         }
     }
 
-    Err(format!("couldn't produce"))
+    Err("couldn't produce".to_string())
 }
 
 pub struct IR {
@@ -604,7 +603,7 @@ impl IR {
         for (r, c) in &constraints {
             constraint_map
                 .entry(r.clone())
-                .or_insert(vec![])
+                .or_insert_with(Vec::new)
                 .push(c.clone());
         }
 
