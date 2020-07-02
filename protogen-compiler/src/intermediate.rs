@@ -153,11 +153,11 @@ other_subchunk (public $id: [u8; 4]) = {
         let _result = expr_for_field(&c, &constraints, &complete).unwrap();
     }
 
-
     #[test]
     fn test_multi_arg() {
         let protocol: Protocol = ProtocolParser::new()
-            .parse(r#"vars3 = {
+            .parse(
+                r#"vars3 = {
   @len: u8;
   @type: u16;
   @data: [u8; @len];
@@ -171,36 +171,52 @@ submessage_2ary_1($a1: u8, $a2: u16 = 0x1) = {
   public f1: [u8; $a1];
 }
 
-submessage_2ary_2($a1: u8, $a2: u16) = {
-  public f1: [u8; $a1];
-  public f2: u16 = $a2 + 5;
-}"#).unwrap();
+submessage_2ary_2($b1: u8, $b2: u16) = {
+  public f1: [u8; $b1];
+  public f2: u16 = $b2 + 5;
+}"#,
+            )
+            .unwrap();
 
         /*
         len(data) = @len
+        serialize(sub) = @data
+        @type = (if let Submessage1(s) = sub { submessage_2ary_1.a2 })
+        @type = (if let Submessage2(s) = sub { submessage_2ary_2.b2 })
+
+        type = if let Submessage1(s) = sub {
+          s.a2
+        }  else if let Submessage2(s) = sub {
+          s.b2
+        }
 
         */
 
         let ir = IR::from_ast(&protocol).unwrap();
 
-        let rf = Ref::str("vars3", "sub");
+        let rf = Ref::str("vars3", "type");
 
         let cs = ir.constraint_map.get(&rf).unwrap();
 
-        assert_eq!(cs, vec![
-            (
-                Ref::str("vars3", "type"),
-                IRExpression::Match(rf.clone(), vec![
-                    ("Submessage1".to_string(), IRExpression::Parameter(Ref::str("submessage_2ary_1", "a2"))),
-                    ("Submessage2".to_string(), IRExpression::Parameter(Ref::str("submessage_2ary_2", "a2"))),
-                ]),
-            )
-        ]
+        assert_eq!(
+            cs,
+            &vec![
+                IRExpression::IfLet(
+                    Ref::str("vars3", "sub"),
+                    "Submessage1".to_string(),
+                    Box::new(IRExpression::Parameter(Ref::str("submessage_2ary_1", "a2")))
+                ),
+                IRExpression::IfLet(
+                    Ref::str("vars3", "sub"),
+                    "Submessage2".to_string(),
+                    Box::new(IRExpression::Parameter(Ref::str("submessage_2ary_2", "b2")))
+                )
+            ]
         );
-
 
         assert!(ir.expr_for_field("vars3", "len").is_ok());
 
+        println!("{}", ir.expr_for_field("vars3", "type").unwrap());
     }
 }
 
@@ -216,7 +232,10 @@ impl Ref {
     }
 
     fn str(message: &str, field: &str) -> Ref {
-        Ref { message: message.to_string(), field: field.to_string() }
+        Ref {
+            message: message.to_string(),
+            field: field.to_string(),
+        }
     }
 
     fn to(message: &Message, field: &Field) -> Ref {
@@ -237,7 +256,8 @@ pub enum IRExpression {
     Parameter(Ref),
     Binary(BinOp, Box<IRExpression>, Box<IRExpression>),
     Unary(UnaryOp, Box<IRExpression>),
-    Match(Ref, Vec<(String, IRExpression)>),
+    //Match(Ref, Vec<(String, IRExpression)>),
+    IfLet(Ref, String, Box<IRExpression>),
 }
 
 impl IRExpression {
@@ -313,7 +333,8 @@ impl IRExpression {
             IRExpression::Unary(op, arg) => {
                 IRExpression::Unary(*op, Box::new(arg.replace(rf, rep)))
             }
-            IRExpression::Match(_, _) => unimplemented!(),
+            //IRExpression::Match(_, _) => unimplemented!(),
+            IRExpression::IfLet(_, _, _) => unimplemented!(),
             ex => ex.clone(),
         }
     }
@@ -338,12 +359,15 @@ impl fmt::Display for IRExpression {
                 print(f, &**r)
             }
             IRExpression::Unary(op, arg) => write!(f, "{}({})", op, arg),
-            IRExpression::Match(v, arms) => {
-                writeln!(f, "match {} {{", v)?;
-                for arm in arms {
-                    writeln!(f, "  {} => {}", arm.0, arm.1)?;
-                }
-                write!(f, "}}")
+            // IRExpression::Match(v, arms) => {
+            //     writeln!(f, "match {} {{", v)?;
+            //     for arm in arms {
+            //         writeln!(f, "  {} => {}", arm.0, arm.1)?;
+            //     }
+            //     write!(f, "}}")
+            // }
+            IRExpression::IfLet(v, typ, expr) => {
+                write!(f, "if let {}(_s) = {} {{ {} }}", typ, v, expr)
             }
         }
     }
@@ -363,7 +387,7 @@ impl Equation {
                 IRExpression::Parameter(v) => v == var,
                 IRExpression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
                 IRExpression::Unary(_, arg) => contains_var(var, arg),
-                IRExpression::Match(_, _) => false,
+                IRExpression::IfLet(_, _, expr) => contains_var(var, expr),
             }
         }
 
@@ -379,7 +403,7 @@ impl Equation {
         // now we reduce the expression until only the var is on the right side
         loop {
             let next = match &rh {
-                IRExpression::Variable(v) => {
+                IRExpression::Variable(v) | IRExpression::Parameter(v) => {
                     if v == var {
                         return Ok(lh);
                     } else {
@@ -410,7 +434,7 @@ impl Equation {
                     }
                 }
                 IRExpression::Unary(..) => unimplemented!(),
-                IRExpression::Match(..) => unimplemented!(),
+                IRExpression::IfLet(..) => unimplemented!(),
             };
 
             if next == rh {
@@ -501,8 +525,6 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                 // handle arguments
                 match &field.data_type {
                     DataType::Choose(vs) => {
-                        let mut arms = vec![];
-                        let mut var = None;
                         for v in vs.iter() {
                             match &v.data_type {
                                 DataType::Message { name, args } => {
@@ -516,38 +538,35 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
 
                                         // for each argument to the constructor, we need to find all
                                         // relevant constraints for the variables in those expressions
-                                        find_vars(
-                                            &mut vars, &IRExpression::from_ast(&message.name, &arg));
+                                        let lh = IRExpression::from_ast(&message.name, &arg);
+                                        find_vars(&mut vars, &lh);
+
+                                        let eq = Equation {
+                                            lh,
+                                            rh: IRExpression::Parameter(Ref::new(
+                                                m.name.clone(),
+                                                p.name.clone(),
+                                            )),
+                                        };
 
                                         for var in vars {
-                                            cs.push((var, )
+                                            let r = eq.solve_for(&var)?;
+                                            cs.push((
+                                                var.clone(),
+                                                IRExpression::IfLet(
+                                                    Ref::new(
+                                                        message.name.clone(),
+                                                        field.name.clone(),
+                                                    ),
+                                                    v.name.clone(),
+                                                    Box::new(r),
+                                                ),
+                                            ));
                                         }
                                     }
-
-
-                                    if var.is_some() && var.unwrap() != vars[0] {
-                                        return Err(
-                                            "All vars in choose currently must be the same"
-                                                .to_string(),
-                                        );
-                                    }
-
-                                    var = Some(vars[0].clone());
-
-                                    arms.push((
-                                        v.name.clone(),
-                                        m.args.get(0).unwrap().name.clone(),
-                                    ));
                                 }
                                 _ => {}
                             }
-                        }
-
-                        if let Some(var) = var {
-                            cs.push((
-                                var.clone(),
-                                IRExpression::Match(Ref::to(message, field), arms),
-                            ));
                         }
                     }
                     _ => {}
@@ -585,11 +604,11 @@ fn expr_for_field(
 
     while !queue.is_empty() {
         let (depth, c) = queue.pop_front().unwrap();
+        println!("{}", c);
         if visited.contains(&c) || depth > 100 {
             // we're in a loop
             continue;
         }
-
 
         visited.insert(c.clone());
 
@@ -610,7 +629,10 @@ fn expr_for_field(
         }
     }
 
-    Err(format!("Couldn't find expression to generate field {}.{}", field.message, field.field))
+    Err(format!(
+        "Couldn't find expression to generate field {}.{}",
+        field.message, field.field
+    ))
 }
 
 pub struct IR {

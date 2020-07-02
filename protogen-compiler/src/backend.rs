@@ -888,7 +888,7 @@ impl Generator {
                 name: "to_vec".to_string(),
                 parameters: vec![],
             },
-            IRExpression::Match(_target, _arms) => unimplemented!(),
+            IRExpression::IfLet(_, _, _) => unimplemented!(),
         }
     }
 
