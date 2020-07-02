@@ -27,3 +27,23 @@ vars2 = {
   @len: u32;
   public data: [u8; @len];
 }
+
+/*
+vars3 = {
+  @len: u8;
+  @type: u16;
+  @data: [u8; @len];
+  public sub: apply @data choose {
+    Submessage1 = submessage_2ary_1(@len + 5, @type) |
+    Submessage2 = submessage_2ary_2(@len, @type)
+  };
+}
+
+submessage_2ary_1($a1: u8, $a2: u16 = 0x1) = {
+  public f1: [u8; $a1];
+}
+
+submessage_2ary_2($a1: u8, $a2: u16 = 0x2) = {
+  public f1: [u8; $a1];
+}
+*/

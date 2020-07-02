@@ -15,7 +15,7 @@ mod tests {
     #[test]
     fn solve_for() {
         let pexpr = ExpressionParser::new().parse("(@var - 5) * 10").unwrap();
-        let lh = IRExpression::from_parser("message", &pexpr);
+        let lh = IRExpression::from_ast("message", &pexpr);
         let rh = IRExpression::Value(Value::Number(20));
 
         let solved = Equation { lh, rh }
@@ -152,6 +152,56 @@ other_subchunk (public $id: [u8; 4]) = {
 
         let _result = expr_for_field(&c, &constraints, &complete).unwrap();
     }
+
+
+    #[test]
+    fn test_multi_arg() {
+        let protocol: Protocol = ProtocolParser::new()
+            .parse(r#"vars3 = {
+  @len: u8;
+  @type: u16;
+  @data: [u8; @len];
+  public sub: apply @data choose {
+    Submessage1 = submessage_2ary_1(@len, @type) |
+    Submessage2 = submessage_2ary_2(@len, @type)
+  };
+}
+
+submessage_2ary_1($a1: u8, $a2: u16 = 0x1) = {
+  public f1: [u8; $a1];
+}
+
+submessage_2ary_2($a1: u8, $a2: u16) = {
+  public f1: [u8; $a1];
+  public f2: u16 = $a2 + 5;
+}"#).unwrap();
+
+        /*
+        len(data) = @len
+
+        */
+
+        let ir = IR::from_ast(&protocol).unwrap();
+
+        let rf = Ref::str("vars3", "sub");
+
+        let cs = ir.constraint_map.get(&rf).unwrap();
+
+        assert_eq!(cs, vec![
+            (
+                Ref::str("vars3", "type"),
+                IRExpression::Match(rf.clone(), vec![
+                    ("Submessage1".to_string(), IRExpression::Parameter(Ref::str("submessage_2ary_1", "a2"))),
+                    ("Submessage2".to_string(), IRExpression::Parameter(Ref::str("submessage_2ary_2", "a2"))),
+                ]),
+            )
+        ]
+        );
+
+
+        assert!(ir.expr_for_field("vars3", "len").is_ok());
+
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
@@ -163,6 +213,10 @@ pub struct Ref {
 impl Ref {
     fn new(message: String, field: String) -> Ref {
         Ref { message, field }
+    }
+
+    fn str(message: &str, field: &str) -> Ref {
+        Ref { message: message.to_string(), field: field.to_string() }
     }
 
     fn to(message: &Message, field: &Field) -> Ref {
@@ -180,13 +234,14 @@ impl fmt::Display for Ref {
 pub enum IRExpression {
     Value(Value),
     Variable(Ref),
+    Parameter(Ref),
     Binary(BinOp, Box<IRExpression>, Box<IRExpression>),
     Unary(UnaryOp, Box<IRExpression>),
-    Match(Ref, Vec<(String, String)>),
+    Match(Ref, Vec<(String, IRExpression)>),
 }
 
 impl IRExpression {
-    fn from_parser(message: &str, expr: &ast::Expression) -> IRExpression {
+    fn from_ast(message: &str, expr: &ast::Expression) -> IRExpression {
         match expr {
             ast::Expression::Value(v) => IRExpression::Value(v.clone()),
             ast::Expression::Variable(field) => IRExpression::Variable(Ref {
@@ -200,11 +255,11 @@ impl IRExpression {
             }),
             ast::Expression::Binary(op, lh, rh) => IRExpression::Binary(
                 *op,
-                Box::new(IRExpression::from_parser(message, &*lh)),
-                Box::new(IRExpression::from_parser(message, &*rh)),
+                Box::new(IRExpression::from_ast(message, &*lh)),
+                Box::new(IRExpression::from_ast(message, &*rh)),
             ),
             ast::Expression::Unary(op, arg) => {
-                IRExpression::Unary(*op, Box::new(IRExpression::from_parser(message, &*arg)))
+                IRExpression::Unary(*op, Box::new(IRExpression::from_ast(message, &*arg)))
             }
         }
     }
@@ -276,6 +331,7 @@ impl fmt::Display for IRExpression {
         match self {
             IRExpression::Value(v) => v.fmt(f),
             IRExpression::Variable(v) => write!(f, "{}", v),
+            IRExpression::Parameter(v) => write!(f, "{}", v),
             IRExpression::Binary(op, l, r) => {
                 print(f, &**l)?;
                 write!(f, " {} ", op)?;
@@ -304,6 +360,7 @@ impl Equation {
             match expr {
                 IRExpression::Value(_) => false,
                 IRExpression::Variable(v) => v == var,
+                IRExpression::Parameter(v) => v == var,
                 IRExpression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
                 IRExpression::Unary(_, arg) => contains_var(var, arg),
                 IRExpression::Match(_, _) => false,
@@ -386,7 +443,7 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
             if let Some(value) = &field.value {
                 let this = Ref::to(message, field);
 
-                let expr = IRExpression::from_parser(&message.name, value);
+                let expr = IRExpression::from_ast(&message.name, value);
 
                 match expr {
                     IRExpression::Value(_) => cs.push((this, expr)),
@@ -417,7 +474,7 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
             if let DataType::Array { length, .. } = &field.data_type {
                 let this = Ref::to(message, field);
 
-                let expr = IRExpression::from_parser(&message.name, length);
+                let expr = IRExpression::from_ast(&message.name, length);
                 let mut vars = vec![];
                 find_vars(&mut vars, &expr);
 
@@ -449,34 +506,25 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                         for v in vs.iter() {
                             match &v.data_type {
                                 DataType::Message { name, args } => {
-                                    // TODO this is so hacky
-                                    let mut vars = vec![];
-
-                                    if args.len() != 1 {
-                                        return Err(
-                                            "Only unary messages supported right now".to_string()
-                                        );
-                                    }
-
-                                    for arg in args {
-                                        find_vars(
-                                            &mut vars,
-                                            &IRExpression::from_parser(&message.name, &arg),
-                                        );
-                                    }
-                                    if vars.len() != 1 {
-                                        return Err(format!(
-                                            "Expected 1 variable in {:?}",
-                                            v.data_type
-                                        ));
-                                    }
-
                                     let m = messages
                                         .iter()
                                         .find(|m| name == &m.name)
                                         .ok_or(format!("could not find message {}", name))?;
 
-                                    println!("Var {:?} ", vars[0]);
+                                    for (arg, p) in args.iter().zip(&m.args) {
+                                        let mut vars = vec![];
+
+                                        // for each argument to the constructor, we need to find all
+                                        // relevant constraints for the variables in those expressions
+                                        find_vars(
+                                            &mut vars, &IRExpression::from_ast(&message.name, &arg));
+
+                                        for var in vars {
+                                            cs.push((var, )
+                                        }
+                                    }
+
+
                                     if var.is_some() && var.unwrap() != vars[0] {
                                         return Err(
                                             "All vars in choose currently must be the same"
@@ -542,6 +590,7 @@ fn expr_for_field(
             continue;
         }
 
+
         visited.insert(c.clone());
 
         // if all variables in this expression are complete, we're done
@@ -561,7 +610,7 @@ fn expr_for_field(
         }
     }
 
-    Err("couldn't produce".to_string())
+    Err(format!("Couldn't find expression to generate field {}.{}", field.message, field.field))
 }
 
 pub struct IR {

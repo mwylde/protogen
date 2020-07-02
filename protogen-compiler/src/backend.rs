@@ -856,7 +856,7 @@ impl Generator {
     fn render_irexpression(e: &IRExpression, msg_context: &str) -> RustExpression {
         match e {
             IRExpression::Value(v) => Self::render_value(v),
-            IRExpression::Variable(r) => {
+            IRExpression::Variable(r) | IRExpression::Parameter(r) => {
                 let name = format!("_{}", r.field);
                 if msg_context == r.message {
                     RustExpression::Field {
