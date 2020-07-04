@@ -30,7 +30,7 @@ subchunk($bits_per_sample: u16) = {
   public subchunk: apply @data choose {
     U8DataSubchunk = u8_data_subchunk(@id, $bits_per_sample) |
     U16DataSubchunk = u16_data_subchunk(@id, $bits_per_sample) |
-    OtherSubchunk = other_subchunk(@id)
+    OtherSubchunk = other_subchunk(@id, $bits_per_sample)
   };
 }
 
@@ -42,6 +42,6 @@ u16_data_subchunk ($id: [u8; 4] = b"data", $bits_per_sample: u16 = 16) = {
   public data: many!(u16);
 }
 
-other_subchunk (public $id: [u8; 4]) = {
+other_subchunk (public $id: [u8; 4], $bits_per_sample: u16) = {
   public data: rest!();
 }

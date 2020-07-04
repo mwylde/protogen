@@ -800,7 +800,7 @@ impl Generator {
                     body: Box::new(Generator::writer_for_field(
                         message,
                         field_name,
-                        var("*__v"),
+                        var("__v"),
                         dt,
                     )),
                 },
@@ -888,7 +888,20 @@ impl Generator {
                 name: "to_vec".to_string(),
                 parameters: vec![],
             },
-            IRExpression::IfLet(_, _, _) => unimplemented!(),
+            IRExpression::Match(target, vars) => RustExpression::Match(
+                Box::new(Self::render_irexpression(
+                    &IRExpression::Variable(target.clone()),
+                    msg_context,
+                )),
+                vars.iter()
+                    .map(|(d, expr)| {
+                        (
+                            Destructurer::TupleStruct(d.clone(), vec!["__match_value".to_string()]),
+                            Self::render_irexpression(expr, msg_context),
+                        )
+                    })
+                    .collect(),
+            ),
         }
     }
 

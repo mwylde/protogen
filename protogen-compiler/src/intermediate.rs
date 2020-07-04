@@ -190,6 +190,11 @@ submessage_2ary_2($b1: u8, $b2: u16) = {
           s.b2
         }
 
+        type = match sub {
+          Submessage1(__match_value) => __match_value.a2,
+          Submessage2(__match_value) => __match_value.b2,
+        }
+
         */
 
         let ir = IR::from_ast(&protocol).unwrap();
@@ -200,23 +205,27 @@ submessage_2ary_2($b1: u8, $b2: u16) = {
 
         assert_eq!(
             cs,
-            &vec![
-                IRExpression::IfLet(
-                    Ref::str("vars3", "sub"),
-                    "Submessage1".to_string(),
-                    Box::new(IRExpression::Parameter(Ref::str("submessage_2ary_1", "a2")))
-                ),
-                IRExpression::IfLet(
-                    Ref::str("vars3", "sub"),
-                    "Submessage2".to_string(),
-                    Box::new(IRExpression::Parameter(Ref::str("submessage_2ary_2", "b2")))
-                )
-            ]
+            &vec![IRExpression::Match(
+                Ref::str("vars3", "sub"),
+                vec![
+                    (
+                        "Submessage1".to_string(),
+                        IRExpression::Parameter(Ref::str("__match_value", "a2"))
+                    ),
+                    (
+                        "Submessage2".to_string(),
+                        IRExpression::Parameter(Ref::str("__match_value", "b2"))
+                    ),
+                ]
+            ),]
         );
 
         assert!(ir.expr_for_field("vars3", "len").is_ok());
 
-        println!("{}", ir.expr_for_field("vars3", "type").unwrap());
+        println!(
+            "expr for field {}",
+            ir.expr_for_field("vars3", "type").unwrap()
+        );
     }
 }
 
@@ -256,8 +265,7 @@ pub enum IRExpression {
     Parameter(Ref),
     Binary(BinOp, Box<IRExpression>, Box<IRExpression>),
     Unary(UnaryOp, Box<IRExpression>),
-    //Match(Ref, Vec<(String, IRExpression)>),
-    IfLet(Ref, String, Box<IRExpression>),
+    Match(Ref, Vec<(String, IRExpression)>),
 }
 
 impl IRExpression {
@@ -333,8 +341,7 @@ impl IRExpression {
             IRExpression::Unary(op, arg) => {
                 IRExpression::Unary(*op, Box::new(arg.replace(rf, rep)))
             }
-            //IRExpression::Match(_, _) => unimplemented!(),
-            IRExpression::IfLet(_, _, _) => unimplemented!(),
+            IRExpression::Match(_, _) => unimplemented!(),
             ex => ex.clone(),
         }
     }
@@ -359,15 +366,12 @@ impl fmt::Display for IRExpression {
                 print(f, &**r)
             }
             IRExpression::Unary(op, arg) => write!(f, "{}({})", op, arg),
-            // IRExpression::Match(v, arms) => {
-            //     writeln!(f, "match {} {{", v)?;
-            //     for arm in arms {
-            //         writeln!(f, "  {} => {}", arm.0, arm.1)?;
-            //     }
-            //     write!(f, "}}")
-            // }
-            IRExpression::IfLet(v, typ, expr) => {
-                write!(f, "if let {}(_s) = {} {{ {} }}", typ, v, expr)
+            IRExpression::Match(v, arms) => {
+                writeln!(f, "match {} {{", v)?;
+                for arm in arms {
+                    writeln!(f, "  {} => {}", arm.0, arm.1)?;
+                }
+                write!(f, "}}")
             }
         }
     }
@@ -387,7 +391,7 @@ impl Equation {
                 IRExpression::Parameter(v) => v == var,
                 IRExpression::Binary(_, lh, rh) => contains_var(var, lh) || contains_var(var, rh),
                 IRExpression::Unary(_, arg) => contains_var(var, arg),
-                IRExpression::IfLet(_, _, expr) => contains_var(var, expr),
+                IRExpression::Match(_, arms) => *&arms.iter().any(|(_, e)| contains_var(var, e)),
             }
         }
 
@@ -434,7 +438,7 @@ impl Equation {
                     }
                 }
                 IRExpression::Unary(..) => unimplemented!(),
-                IRExpression::IfLet(..) => unimplemented!(),
+                IRExpression::Match(..) => unimplemented!(),
             };
 
             if next == rh {
@@ -525,6 +529,8 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                 // handle arguments
                 match &field.data_type {
                     DataType::Choose(vs) => {
+                        let mut var_map = HashMap::new();
+
                         for v in vs.iter() {
                             match &v.data_type {
                                 DataType::Message { name, args } => {
@@ -544,29 +550,29 @@ fn find_constraints(messages: &[Message]) -> Result<Vec<Constraint>, String> {
                                         let eq = Equation {
                                             lh,
                                             rh: IRExpression::Parameter(Ref::new(
-                                                m.name.clone(),
+                                                "__match_value".to_string(),
                                                 p.name.clone(),
                                             )),
                                         };
 
                                         for var in vars {
                                             let r = eq.solve_for(&var)?;
-                                            cs.push((
-                                                var.clone(),
-                                                IRExpression::IfLet(
-                                                    Ref::new(
-                                                        message.name.clone(),
-                                                        field.name.clone(),
-                                                    ),
-                                                    v.name.clone(),
-                                                    Box::new(r),
-                                                ),
-                                            ));
+                                            var_map
+                                                .entry(var.clone())
+                                                .or_insert(vec![])
+                                                .push((v.name.clone(), r));
                                         }
                                     }
                                 }
                                 _ => {}
                             }
+                        }
+                        for (k, v) in var_map {
+                            if v.len() != vs.len() {
+                                return Err(format!("Var {} must appear as a parameter in every variant of the choose", k));
+                            }
+
+                            cs.push((k, IRExpression::Match(Ref::to(message, field), v)));
                         }
                     }
                     _ => {}
